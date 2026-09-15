@@ -93,10 +93,9 @@ def resolve_series_id(share_url):
     trimmed = share_url.strip()
     if trimmed.isdigit():
         return trimmed
-    # 从混合文本中提取 URL
-    m = re.search(r'https?://[^\s<>"'\'，。]+', trimmed)
+    m = re.search(r"https?://[^\s<>\"'，。]+", trimmed)
     if m:
-        trimmed = m.group(0).rstrip('.,;:!?，。；：！？')
+        trimmed = m.group(0).rstrip(".,;:!?，。；：！？")
     resp = requests.get(trimmed, headers={"User-Agent": "Mozilla/5.0 (Linux; Android 9; SM-N9860)"}, timeout=30, allow_redirects=True)
     final_url = resp.url
     m = re.search(r"video_series_id=(\d+)", final_url)
