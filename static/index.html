@@ -74,6 +74,7 @@ button.secondary { background: #0f3460; }
 </div>
 <script>
 let episodes = [];
+let currentSeriesId = '';
 let selectedEps = new Set();
 let pollTimer = null;
 async function parseDrama() {
@@ -85,6 +86,7 @@ async function parseDrama() {
     if (d.code !== 0) { alert('解析失败: ' + d.msg); return; }
     const info = d.data;
     episodes = info.episodes;
+    currentSeriesId = info.series_id;
     selectedEps = new Set(episodes.map(e => e.vid_index));
     document.getElementById('dramaTitle').textContent = info.series_title;
     document.getElementById('dramaMeta').textContent = `共 ${episodes.length} 集`;
@@ -113,14 +115,12 @@ function selectRange(a, b) {
   renderEpGrid();
 }
 async function startDownload() {
-  const seriesId = episodes[0].series_id;
-  const r = await fetch('/api/parse', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({url: seriesId})});
-  const d = await r.json();
-  const sid = d.data.series_id;
+  if (!currentSeriesId) { alert('请先解析剧集'); return; }
   const eps = Array.from(selectedEps);
-  const resp = await fetch('/api/download', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({series_id: sid, episodes: eps})});
+  if (eps.length === 0) { alert('请先选择要下载的集数'); return; }
+  const resp = await fetch('/api/download', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({series_id: currentSeriesId, episodes: eps})});
   const j = await resp.json();
-  if (j.code !== 0) { alert('下载启动失败'); return; }
+  if (j.code !== 0) { alert('下载启动失败: ' + j.msg); return; }
   document.getElementById('progressCard').classList.remove('hidden');
   pollProgress(j.task_id);
 }
