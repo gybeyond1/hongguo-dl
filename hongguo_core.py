@@ -400,7 +400,7 @@ def decrypt_mp4_file(src_path, dst_path, key):
                 if sub is not None:
                     new_children.append(sub)
         body = b"".join(new_children)
-        hdr = bytearray(box["hdr"])
+        hdr = bytearray(data[box["off"]:box["off"]+box["hdr"]])
         if box["hdr"] == 8:
             struct.pack_into(">I", hdr, 0, box["hdr"] + len(body))
         else:
