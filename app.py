@@ -130,9 +130,6 @@ def start_download(req: DownloadRequest):
                     continue
 
                 try:
-                    video_url, spade_a = hg.fetch_play_url(vid)
-                    if not video_url:
-                        raise Exception("无播放地址")
                     enc_path = out_path + ".enc"
                     dl_headers = {
                         "User-Agent": "Mozilla/5.0 (Linux; Android 9; SM-N9860) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
@@ -140,8 +137,23 @@ def start_download(req: DownloadRequest):
                         "Origin": "https://novelquickapp.com",
                         "Accept": "*/*",
                     }
-                    r = hg.requests.get(video_url, headers=dl_headers, timeout=120)
-                    r.raise_for_status()
+                    r = None
+                    spade_a = None
+                    for attempt in range(3):
+                        video_url, spade_a = hg.fetch_play_url(vid)
+                        if not video_url:
+                            continue
+                        try:
+                            r = hg.requests.get(video_url, headers=dl_headers, timeout=120)
+                            r.raise_for_status()
+                            break
+                        except Exception:
+                            if attempt < 2:
+                                time.sleep(2)
+                                continue
+                            raise
+                    if r is None:
+                        raise Exception("无播放地址")
                     with open(enc_path, "wb") as f:
                         f.write(r.content)
                     key = hg.derive_key(spade_a)
