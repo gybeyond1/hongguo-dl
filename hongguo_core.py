@@ -345,7 +345,7 @@ def decrypt_mp4_file(src_path, dst_path, key):
                 ivs.append(bytes(data[iv_data_start+i*iv_size:iv_data_start+(i+1)*iv_size]))
         chunk_spc = {}
         for i, (fc, spc) in enumerate(stsc_tab):
-            nxt = stsc_tab[i+1][0] - 1 if i + 1 < len(stsc_tab) else nc + 1
+            nxt = stsc_tab[i+1][0] if i + 1 < len(stsc_tab) else nc + 1
             for ci in range(fc - 1, nxt - 1):
                 chunk_spc[ci] = spc
         sample_offs = []
