@@ -4,20 +4,34 @@
 
 import os
 import re
+import json
+import shutil
+import subprocess
 import threading
 import time
 from pathlib import Path
-from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import hongguo_core as hg
 
 DOWNLOAD_DIR = os.environ.get("DOWNLOAD_DIR", "/downloads")
+APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 app = FastAPI(title="红果短剧下载器")
+
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    if APP_PASSWORD and request.url.path.startswith("/api/"):
+        token = request.headers.get("X-Auth-Token", "")
+        if token != APP_PASSWORD:
+            return JSONResponse({"code": -1, "msg": "未授权"}, status_code=401)
+    return await call_next(request)
+
 
 download_tasks = {}
 task_lock = threading.Lock()
@@ -30,6 +44,33 @@ class ParseRequest(BaseModel):
 class DownloadRequest(BaseModel):
     series_id: str
     episodes: list[int]
+
+
+class DeleteRequest(BaseModel):
+    drama: str
+    filename: str = ""
+
+
+class MergeRequest(BaseModel):
+    drama: str
+
+
+class LoginRequest(BaseModel):
+    password: str
+
+
+@app.post("/api/login")
+def login(req: LoginRequest):
+    if not APP_PASSWORD:
+        return {"code": 0, "need_auth": False}
+    if req.password == APP_PASSWORD:
+        return {"code": 0, "need_auth": True}
+    return {"code": -1, "msg": "密码错误"}
+
+
+@app.get("/api/config")
+def get_config():
+    return {"code": 0, "need_auth": bool(APP_PASSWORD)}
 
 
 @app.post("/api/parse")
@@ -58,9 +99,14 @@ def start_download(req: DownloadRequest):
         try:
             info = hg.fetch_episode_list(req.series_id)
             title = info["series_title"]
+            cover = info.get("cover", "")
             safe_name = re.sub(r'[<>:"/\\|?*]', "_", title)
             drama_dir = os.path.join(DOWNLOAD_DIR, safe_name)
             os.makedirs(drama_dir, exist_ok=True)
+
+            meta_path = os.path.join(drama_dir, ".meta.json")
+            with open(meta_path, "w") as f:
+                json.dump({"title": title, "cover": cover, "series_id": req.series_id}, f, ensure_ascii=False)
 
             selected_vids = set()
             for ep in info["episodes"]:
@@ -128,15 +174,74 @@ def progress(task_id: str):
 @app.get("/api/files")
 def list_files():
     result = []
-    for drama_dir in Path(DOWNLOAD_DIR).iterdir():
+    for drama_dir in sorted(Path(DOWNLOAD_DIR).iterdir(), reverse=True):
         if drama_dir.is_dir():
             files = sorted(drama_dir.glob("*.mp4"))
+            total_size = sum(f.stat().st_size for f in files)
+            title = drama_dir.name
+            cover = ""
+            meta_path = drama_dir / ".meta.json"
+            if meta_path.exists():
+                try:
+                    with open(meta_path) as f:
+                        meta = json.load(f)
+                        title = meta.get("title", drama_dir.name)
+                        cover = meta.get("cover", "")
+                except Exception:
+                    pass
             result.append({
                 "name": drama_dir.name,
+                "title": title,
+                "cover": cover,
                 "count": len(files),
+                "size_mb": round(total_size / 1024 / 1024, 1),
                 "files": [f.name for f in files],
             })
     return {"code": 0, "data": result}
+
+
+@app.post("/api/delete")
+def delete_file(req: DeleteRequest):
+    try:
+        if req.filename:
+            full = os.path.join(DOWNLOAD_DIR, req.drama, req.filename)
+            if os.path.exists(full):
+                os.remove(full)
+        else:
+            shutil.rmtree(os.path.join(DOWNLOAD_DIR, req.drama), ignore_errors=True)
+        return {"code": 0}
+    except Exception as e:
+        return {"code": -1, "msg": str(e)}
+
+
+@app.post("/api/merge")
+def merge_episodes(req: MergeRequest):
+    try:
+        drama_dir = os.path.join(DOWNLOAD_DIR, req.drama)
+        if not os.path.isdir(drama_dir):
+            return {"code": -1, "msg": "目录不存在"}
+
+        mp4_files = sorted(Path(drama_dir).glob("*.mp4"))
+        if len(mp4_files) < 2:
+            return {"code": -1, "msg": "至少需要2个视频才能合并"}
+
+        list_path = os.path.join(drama_dir, "concat_list.txt")
+        with open(list_path, "w") as f:
+            for fp in mp4_files:
+                f.write(f"file '{fp.name}'\n")
+
+        output_path = os.path.join(drama_dir, f"{req.drama}_全集.mp4")
+        cmd = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", list_path, "-c", "copy", "-movflags", "+faststart", output_path]
+        result = subprocess.run(cmd, capture_output=True, text=True, cwd=drama_dir, timeout=300)
+        os.remove(list_path)
+
+        if result.returncode != 0:
+            return {"code": -1, "msg": f"ffmpeg错误: {result.stderr[-500:]}"}
+
+        size_mb = round(os.path.getsize(output_path) / 1024 / 1024, 1)
+        return {"code": 0, "data": {"file": f"{req.drama}_全集.mp4", "size_mb": size_mb}}
+    except Exception as e:
+        return {"code": -1, "msg": str(e)}
 
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
