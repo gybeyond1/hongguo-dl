@@ -304,21 +304,52 @@ async function deleteFile(drama, filename) {
   loadFiles();
 }
 
+let mergePollTimers = {};
+
 async function mergeDrama(name) {
-  if (!confirm(`合并《${name}》所有集数为一个视频？（不重编码，速度很快）`)) return;
-  const btn = event.target;
-  btn.disabled = true;
-  btn.textContent = '合并中...';
+  if (!confirm(`合并《${name}》所有集数为一个视频？合并后会自动删除单集文件。`)) return;
   const r = await apiFetch('/api/merge', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({drama: name})});
   const d = await r.json();
-  if (d.code === 0) {
-    alert(`合并完成: ${d.data.file} (${d.data.size_mb}MB)`);
-    loadFiles();
-  } else {
-    alert('合并失败: ' + d.msg);
+  if (d.code !== 0) { alert('合并失败: ' + d.msg); return; }
+  // 展开合并日志
+  const logEl = document.getElementById('mergelog_' + name);
+  if (logEl) {
+    logEl.classList.remove('hidden');
+    logEl.innerHTML = '<div style="color:#888">正在合并...</div>';
   }
-  btn.disabled = false;
-  btn.textContent = '合并全集';
+  pollMergeStatus(name);
+}
+
+function pollMergeStatus(name) {
+  if (mergePollTimers[name]) clearInterval(mergePollTimers[name]);
+  mergePollTimers[name] = setInterval(async () => {
+    try {
+      const r = await apiFetch('/api/merge_status/' + encodeURIComponent(name));
+      const d = await r.json();
+      if (d.code !== 0) return;
+      const t = d.data;
+      const logEl = document.getElementById('mergelog_' + name);
+      if (!logEl) { clearInterval(mergePollTimers[name]); return; }
+      if (t.status === 'none') {
+        clearInterval(mergePollTimers[name]);
+        return;
+      }
+      const logText = (t.logs || []).slice(-20).join('\n');
+      const statusBadge = t.status === 'running' ? '<span style="color:#2ecc71">合并中...</span>' :
+                          t.status === 'done' ? '<span style="color:#2ecc71">✅ 合并完成</span>' :
+                          '<span style="color:#ff6b6b">❌ 失败</span>';
+      logEl.innerHTML = `<div style="margin-bottom:4px">${statusBadge}</div><pre style="white-space:pre-wrap;font-size:11px;color:#aaa;max-height:150px;overflow-y:auto;margin:0">${logText}</pre>`;
+      if (t.status === 'done' || t.status === 'error') {
+        clearInterval(mergePollTimers[name]);
+        setTimeout(() => loadFiles(), 1000);
+      }
+    } catch(e) {}
+  }, 1500);
+}
+
+function toggleMergeLog(name) {
+  const el = document.getElementById('mergelog_' + name);
+  if (el) el.classList.toggle('hidden');
 }
 
 function toggleMissing(name) {
@@ -353,27 +384,31 @@ async function loadFiles() {
     const el = document.getElementById('fileList');
     if (d.data.length === 0) { el.innerHTML = '<div style="color:#666">暂无下载</div>'; return; }
     el.innerHTML = d.data.map(drama => {
-      let missingHtml = '';
-      if (drama.missing > 0) {
-        missingHtml = ` · <span class="missing-toggle" onclick="toggleMissing('${drama.name}')">缺${drama.missing}集 ▾</span>`;
+      let statusHtml = '';
+      if (drama.merged) {
+        statusHtml = ' · <span style="color:#2ecc71">✓ 已合并为全集</span>';
+      } else if (drama.missing > 0) {
+        statusHtml = ` · <span class="missing-toggle" onclick="toggleMissing('${drama.name}')">缺${drama.missing}集 ▾</span>`;
       } else if (drama.total_episodes && drama.count >= drama.total_episodes) {
-        missingHtml = ' · <span style="color:#2ecc71">✓ 已下完</span>';
+        statusHtml = ' · <span style="color:#2ecc71">✓ 已下完</span>';
       }
+      const mergeBtn = drama.merged ? '' : `<button class="small secondary" onclick="mergeDrama('${drama.name}')">合并全集</button>`;
       return `<div class="drama-item">
         <div class="drama-header">
           <div class="drama-info">
             ${drama.cover ? `<img class="drama-cover" src="${drama.cover}" loading="lazy">` : ''}
             <div class="drama-text">
               <div class="drama-name">📁 ${drama.title || drama.name}</div>
-              <div class="drama-meta">${drama.count}集 · ${drama.size_mb}MB${drama.total_episodes ? ` · 共${drama.total_episodes}集` : ''}${missingHtml}</div>
+              <div class="drama-meta">${drama.count}集 · ${drama.size_mb}MB${drama.total_episodes ? ` · 共${drama.total_episodes}集` : ''}${statusHtml}</div>
             </div>
           </div>
           <div class="drama-actions">
-            <button class="small secondary" onclick="mergeDrama('${drama.name}')">合并</button>
+            ${mergeBtn}
             <button class="small danger" onclick="deleteDrama('${drama.name}')">删除</button>
           </div>
         </div>
         <div id="missing_${drama.name}" class="hidden missing-detail"></div>
+        <div id="mergelog_${drama.name}" class="hidden" style="margin:8px 0;padding:10px;background:#16213e;border-radius:8px"></div>
         <div class="file-grid">
           ${drama.files.map(f => `<div class="file-chip"><span>${f}</span><button onclick="deleteFile('${drama.name}','${f}')">✕</button></div>`).join('')}
         </div>
