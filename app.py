@@ -19,6 +19,7 @@ import hongguo_core as hg
 
 DOWNLOAD_DIR = os.environ.get("DOWNLOAD_DIR", "/downloads")
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
+TASKS_FILE = os.path.join(DOWNLOAD_DIR, ".tasks.json")
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 app = FastAPI(title="红果短剧下载器")
@@ -44,6 +45,30 @@ async def auth_middleware(request: Request, call_next):
 
 download_tasks = {}
 task_lock = threading.Lock()
+
+
+def load_tasks():
+    """从磁盘加载任务状态"""
+    global download_tasks
+    try:
+        if os.path.exists(TASKS_FILE):
+            with open(TASKS_FILE) as f:
+                download_tasks = json.load(f)
+    except Exception:
+        download_tasks = {}
+
+
+def save_tasks():
+    """保存任务状态到磁盘"""
+    try:
+        with task_lock:
+            with open(TASKS_FILE, "w") as f:
+                json.dump(download_tasks, f, ensure_ascii=False)
+    except Exception:
+        pass
+
+
+load_tasks()
 
 
 class ParseRequest(BaseModel):
@@ -102,7 +127,10 @@ def start_download(req: DownloadRequest):
             "done": 0,
             "current": "",
             "errors": [],
+            "series_id": req.series_id,
+            "started_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         }
+    save_tasks()
 
     def worker():
         try:
@@ -127,11 +155,15 @@ def start_download(req: DownloadRequest):
             eps_to_dl = [e for e in info["episodes"] if e["vid"] in selected_vids]
             eps_to_dl.sort(key=lambda x: x["vid_index"])
 
+            with task_lock:
+                download_tasks[task_id]["title"] = title
+
             for ep in eps_to_dl:
                 vid = ep["vid"]
                 idx = ep["vid_index"]
                 with task_lock:
                     download_tasks[task_id]["current"] = f"第{idx}集"
+                save_tasks()
 
                 out_path = os.path.join(drama_dir, f"{idx:03d}_第{idx}集.mp4")
                 if os.path.exists(out_path) and os.path.getsize(out_path) > 10000:
@@ -178,6 +210,7 @@ def start_download(req: DownloadRequest):
 
                 with task_lock:
                     download_tasks[task_id]["done"] += 1
+                save_tasks()
 
             with task_lock:
                 download_tasks[task_id]["status"] = "done"
@@ -186,6 +219,7 @@ def start_download(req: DownloadRequest):
             with task_lock:
                 download_tasks[task_id]["status"] = "error"
                 download_tasks[task_id]["errors"].append(str(e))
+        save_tasks()
 
     threading.Thread(target=worker, daemon=True).start()
     return {"code": 0, "task_id": task_id}
@@ -200,6 +234,23 @@ def progress(task_id: str):
         return {"code": 0, "data": dict(t)}
 
 
+@app.get("/api/tasks")
+def list_tasks():
+    """返回所有任务（用于刷新后恢复状态）"""
+    with task_lock:
+        # 返回倒序，最新的在前
+        items = sorted(download_tasks.items(), key=lambda x: x[0], reverse=True)
+        return {"code": 0, "data": [{"task_id": k, **v} for k, v in items]}
+
+
+@app.delete("/api/tasks/{task_id}")
+def clear_task(task_id: str):
+    with task_lock:
+        download_tasks.pop(task_id, None)
+    save_tasks()
+    return {"code": 0}
+
+
 @app.get("/api/files")
 def list_files():
     result = []
@@ -207,7 +258,6 @@ def list_files():
         if drama_dir.is_dir():
             files = sorted(drama_dir.glob("*.mp4"))
             total_size = sum(f.stat().st_size for f in files)
-            # 读取元信息
             title = drama_dir.name
             cover = ""
             total_eps = 0
@@ -221,11 +271,9 @@ def list_files():
                         total_eps = meta.get("total_episodes", 0)
                 except Exception:
                     pass
-            # 计算缺集列表
-            import re as _re
             downloaded_eps = set()
             for f in files:
-                m = _re.match(r'(\d+)_', f.name)
+                m = re.match(r'(\d+)_', f.name)
                 if m:
                     downloaded_eps.add(int(m.group(1)))
             missing_list = []
@@ -270,7 +318,6 @@ def merge_episodes(req: MergeRequest):
         if len(mp4_files) < 2:
             return {"code": -1, "msg": "至少需要2个视频才能合并"}
 
-        # 写 concat 列表文件
         list_path = os.path.join(drama_dir, "concat_list.txt")
         with open(list_path, "w") as f:
             for fp in mp4_files:
