@@ -26,4 +26,6 @@ jobs:
           context: .
           push: true
           no-cache: true
+          pull: true
+          cache-from: ""
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/hongguo-dl:latest
