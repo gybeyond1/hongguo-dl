@@ -93,7 +93,8 @@ def resolve_series_id(share_url):
     trimmed = share_url.strip()
     if trimmed.isdigit():
         return trimmed
-    m = re.search(r'https?://[^\s<>"\'，。]+', trimmed)
+    # 从混合文本中提取 URL
+    m = re.search(r'https?://[^\s<>"'\'，。]+', trimmed)
     if m:
         trimmed = m.group(0).rstrip('.,;:!?，。；：！？')
     resp = requests.get(trimmed, headers={"User-Agent": "Mozilla/5.0 (Linux; Android 9; SM-N9860)"}, timeout=30, allow_redirects=True)
@@ -374,14 +375,14 @@ def decrypt_mp4_file(src_path, dst_path, key):
                         hdr_size = 78 if etyp == "encv" else 28
                         entry = bytearray(8 + hdr_size)
                         entry[4:8] = new_type.encode("latin1")
-                        entry[8:8+hdr_size] = data[p+8:p+8+hdr_size]
+                        entry[8:8+hdr_size] = bytes(data[p+8:p+8+hdr_size])
                         extra = bytearray()
                         q = p + 8 + hdr_size
                         while q + 8 <= p + esize:
                             s2 = struct.unpack(">I", data[q:q+4])[0]
                             t2 = data[q+4:q+8].decode("latin1")
                             if t2 != "sinf":
-                                extra += data[q:q+s2]
+                                extra += bytes(data[q:q+s2])
                             q += s2
                         full_entry = entry + extra
                         struct.pack_into(">I", full_entry, 0, len(full_entry))
@@ -422,5 +423,5 @@ def decrypt_mp4_file(src_path, dst_path, key):
             if typ == "moov":
                 f.write(new_moov)
             else:
-                f.write(data[off:off+size])
+                f.write(bytes(data[off:off+size]))
             off += size

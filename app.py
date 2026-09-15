@@ -134,7 +134,12 @@ def start_download(req: DownloadRequest):
                     if not video_url:
                         raise Exception("无播放地址")
                     enc_path = out_path + ".enc"
-                    r = hg.requests.get(video_url, headers={"User-Agent": hg.UA, "Referer": "https://novelquickapp.com/"}, timeout=120)
+                    dl_headers = {
+                        "User-Agent": hg.UA,
+                        "Referer": "https://novelquickapp.com/",
+                        "Origin": "https://novelquickapp.com",
+                    }
+                    r = hg.requests.get(video_url, headers=dl_headers, timeout=120)
                     r.raise_for_status()
                     with open(enc_path, "wb") as f:
                         f.write(r.content)
