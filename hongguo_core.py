@@ -303,7 +303,11 @@ def decrypt_mp4_file(src_path, dst_path, key):
     track_info = []
     for stbl in stbls:
         children = {c["typ"]: c for c in stbl["children"]}
-        stsz, stco, stsc, senc = children.get("stsz"), children.get("stco"), children.get("stsc"), children.get("senc")
+        stsz = children.get("stsz")
+        stco = children.get("stco") or children.get("co64")
+        stsc = children.get("stsc")
+        senc = children.get("senc")
+        sbgp = children.get("sbgp")
         if not stsz or not stco or not stsc:
             continue
         ss = struct.unpack(">I", data[stsz["off"]+12:stsz["off"]+16])[0]
@@ -312,8 +316,13 @@ def decrypt_mp4_file(src_path, dst_path, key):
             sizes = [struct.unpack(">I", data[stsz["off"]+20+i*4:stsz["off"]+24+i*4])[0] for i in range(n)]
         else:
             sizes = [ss] * n
+        # stco 用 4 字节偏移，co64 用 8 字节偏移
+        is_co64 = stco["typ"] == "co64"
         nc = struct.unpack(">I", data[stco["off"]+12:stco["off"]+16])[0]
-        chunk_offs = [struct.unpack(">I", data[stco["off"]+16+i*4:stco["off"]+20+i*4])[0] for i in range(nc)]
+        if is_co64:
+            chunk_offs = [struct.unpack(">Q", data[stco["off"]+16+i*8:stco["off"]+24+i*8])[0] for i in range(nc)]
+        else:
+            chunk_offs = [struct.unpack(">I", data[stco["off"]+16+i*4:stco["off"]+20+i*4])[0] for i in range(nc)]
         ns = struct.unpack(">I", data[stsc["off"]+12:stsc["off"]+16])[0]
         stsc_tab = []
         for i in range(ns):
@@ -323,8 +332,17 @@ def decrypt_mp4_file(src_path, dst_path, key):
         ivs = []
         if senc:
             sc = struct.unpack(">I", data[senc["off"]+12:senc["off"]+16])[0]
+            senc_flags = struct.unpack(">I", data[senc["off"]+8:senc["off"]+12])[0]
+            # flags bit 1 = per_sample_iv_size
+            iv_size = 8
+            if senc_flags & 0x000002:
+                # per_sample_iv_size 紧跟在 sample_count 后面
+                iv_size = data[senc["off"]+16]
+                iv_data_start = senc["off"] + 17
+            else:
+                iv_data_start = senc["off"] + 16
             for i in range(sc):
-                ivs.append(bytes(data[senc["off"]+16+i*8:senc["off"]+24+i*8]))
+                ivs.append(bytes(data[iv_data_start+i*iv_size:iv_data_start+(i+1)*iv_size]))
         chunk_spc = {}
         for i, (fc, spc) in enumerate(stsc_tab):
             nxt = stsc_tab[i+1][0] - 1 if i + 1 < len(stsc_tab) else nc + 1
