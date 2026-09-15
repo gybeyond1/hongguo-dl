@@ -371,8 +371,23 @@ def decrypt_mp4_file(src_path, dst_path, key):
                     esize = struct.unpack(">I", data[p:p+4])[0]
                     etyp = data[p+4:p+8].decode("latin1")
                     if etyp in ("encv", "enca"):
-                        new_type = "hvc1" if etyp == "encv" else "mp4a"
                         hdr_size = 78 if etyp == "encv" else 28
+                        # 自动检测视频编码格式
+                        if etyp == "encv":
+                            is_h265 = False
+                            q2 = p + 8 + hdr_size
+                            while q2 + 8 <= p + esize:
+                                s3 = struct.unpack(">I", data[q2:q2+4])[0]
+                                t3 = data[q2+4:q2+8].decode("latin1")
+                                if t3 == "hvcC":
+                                    is_h265 = True
+                                    break
+                                if t3 == "avcC":
+                                    break
+                                q2 += s3
+                            new_type = "hvc1" if is_h265 else "avc1"
+                        else:
+                            new_type = "mp4a"
                         entry = bytearray(8 + hdr_size)
                         entry[4:8] = new_type.encode("latin1")
                         entry[8:8+hdr_size] = data[p+8:p+8+hdr_size]
