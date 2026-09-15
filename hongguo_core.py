@@ -372,16 +372,12 @@ def decrypt_mp4_file(src_path, dst_path, key):
             plain = decrypt_sample(key, nonce, cipher)
             data[off:off+sz] = plain
 
-    def rebuild_box(box):
-        children = box["children"]
-        if not children:
-            return bytes(data[box["off"]:box["off"]+box["size"]])
-        new_children = []
-        for c in children:
-            if c["typ"] in ["senc", "saio", "saiz", "sgpd", "sbgp"]:
-                continue
-            if c["typ"] == "stsd":
-                content = c["off"] + 8
+    # Build stsd patches first
+    patches = {}
+    def find_stsd(boxes):
+        for b in boxes:
+            if b["typ"] == "stsd":
+                content = b["off"] + 8
                 count = struct.unpack(">I", data[content+4:content+8])[0]
                 p = content + 8
                 entries = []
@@ -390,7 +386,6 @@ def decrypt_mp4_file(src_path, dst_path, key):
                     etyp = data[p+4:p+8].decode("latin1")
                     if etyp in ("encv", "enca"):
                         hdr_size = 78 if etyp == "encv" else 28
-                        # 自动检测视频编码格式
                         if etyp == "encv":
                             is_h265 = False
                             q2 = p + 8 + hdr_size
@@ -414,6 +409,10 @@ def decrypt_mp4_file(src_path, dst_path, key):
                         while q + 8 <= p + esize:
                             s2 = struct.unpack(">I", data[q:q+4])[0]
                             t2 = data[q+4:q+8].decode("latin1")
+                            if s2 == 1:
+                                s2 = struct.unpack(">Q", data[q+8:q+16])[0]
+                            elif s2 == 0:
+                                s2 = p + esize - q
                             if t2 != "sinf":
                                 extra += data[q:q+s2]
                             q += s2
@@ -423,15 +422,25 @@ def decrypt_mp4_file(src_path, dst_path, key):
                     else:
                         entries.append(bytes(data[p:p+esize]))
                     p += esize
-                stsd_hdr = bytearray(data[c["off"]:content+8])
+                stsd_hdr = bytearray(data[b["off"]:content+8])
                 struct.pack_into(">I", stsd_hdr, 12, len(entries))
                 result = bytearray(bytes(stsd_hdr) + b"".join(entries))
                 struct.pack_into(">I", result, 0, len(result))
-                new_children.append(bytes(result))
-            else:
-                sub = rebuild_box(c)
-                if sub is not None:
-                    new_children.append(sub)
+                patches[b["off"]] = bytes(result)
+            if b["children"]:
+                find_stsd(b["children"])
+    find_stsd(top)
+
+    def rebuild_box(box):
+        children = box["children"]
+        if not children:
+            return patches.get(box["off"], bytes(data[box["off"]:box["off"]+box["size"]]))
+        new_children = []
+        for c in children:
+            if c["typ"] in ["senc", "saio", "saiz", "sgpd", "sbgp"]:
+                continue
+            sub = rebuild_box(c)
+            new_children.append(sub)
         body = b"".join(new_children)
         hdr = bytearray(data[box["off"]:box["off"]+box["hdr"]])
         if box["hdr"] == 8:
@@ -440,6 +449,29 @@ def decrypt_mp4_file(src_path, dst_path, key):
             struct.pack_into(">I", hdr, 0, 1)
             struct.pack_into(">Q", hdr, 8, 16 + len(body))
         return bytes(hdr) + body
+
+    # First pass: calculate delta
+    first_moov = rebuild_box(moov)
+    delta = moov["size"] - len(first_moov)
+
+    # Adjust stco/co64 chunk offsets in data
+    def find_stco(boxes):
+        for b in boxes:
+            if b["typ"] in ("stco", "co64"):
+                nc = struct.unpack(">I", data[b["off"]+12:b["off"]+16])[0]
+                if b["typ"] == "stco":
+                    for i in range(nc):
+                        v = struct.unpack(">I", data[b["off"]+16+i*4:b["off"]+20+i*4])[0]
+                        if v >= delta:
+                            struct.pack_into(">I", data, b["off"]+16+i*4, v - delta)
+                else:
+                    for i in range(nc):
+                        v = struct.unpack(">Q", data[b["off"]+16+i*8:b["off"]+24+i*8])[0]
+                        if v >= delta:
+                            struct.pack_into(">Q", data, b["off"]+16+i*8, v - delta)
+            if b["children"]:
+                find_stco(b["children"])
+    find_stco(top)
 
     new_moov = rebuild_box(moov)
     with open(dst_path, "wb") as f:
