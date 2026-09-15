@@ -94,10 +94,15 @@ button.small { padding: 6px 12px; font-size: 12px; }
 </div>
 
 <div id="progressCard" class="card hidden">
-  <h3>下载进度</h3>
-  <div id="progressText"></div>
-  <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%">0%</div></div>
-  <div id="errorList"></div>
+  <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="toggleProgress()">
+    <h3 style="margin:0">📊 下载进度</h3>
+    <span id="progressToggle" style="color:#888;font-size:14px">▼</span>
+  </div>
+  <div id="progressBody">
+    <div id="progressText"></div>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%">0%</div></div>
+    <div id="errorList"></div>
+  </div>
 </div>
 
 <div class="card">
@@ -132,6 +137,7 @@ async function checkConfig() {
     loadFiles();
   } else {
     if (authToken) {
+      // 验证 token 是否有效
       try {
         await apiFetch('/api/files');
         document.getElementById('loginOverlay').style.display = 'none';
@@ -257,6 +263,29 @@ async function mergeDrama(name) {
   btn.textContent = '合并全集';
 }
 
+function toggleProgress() {
+  const body = document.getElementById('progressBody');
+  const toggle = document.getElementById('progressToggle');
+  if (body.classList.contains('hidden')) {
+    body.classList.remove('hidden');
+    toggle.textContent = '▼';
+  } else {
+    body.classList.add('hidden');
+    toggle.textContent = '▶';
+  }
+}
+
+function toggleMissing(name) {
+  const el = document.getElementById('missing_' + name);
+  if (el.classList.contains('hidden')) {
+    const list = window._missingData[name] || [];
+    el.textContent = '缺集: ' + list.join(', ');
+    el.classList.remove('hidden');
+  } else {
+    el.classList.add('hidden');
+  }
+}
+
 async function loadFiles() {
   try {
     const r = await apiFetch('/api/files');
@@ -270,7 +299,7 @@ async function loadFiles() {
             ${drama.cover ? `<img class="drama-cover" src="${drama.cover}" loading="lazy">` : ''}
             <div class="drama-text">
               <div class="drama-name">📁 ${drama.title || drama.name}</div>
-              <div class="drama-meta">${drama.count}集 · ${drama.size_mb}MB${drama.total_episodes ? ` · 共${drama.total_episodes}集` : ''}${drama.missing > 0 ? ` · <span style="color:#ff9f43">缺${drama.missing}集</span>` : (drama.total_episodes && drama.count >= drama.total_episodes ? ' · <span style="color:#2ecc71">已下完</span>' : '')}</div>
+              <div class="drama-meta">${drama.count}集 · ${drama.size_mb}MB${drama.total_episodes ? ` · 共${drama.total_episodes}集` : ''}${drama.missing > 0 ? ` · <span style="color:#ff9f43;cursor:pointer;text-decoration:underline" onclick="toggleMissing('${drama.name}')">缺${drama.missing}集 ▾</span>` : (drama.total_episodes && drama.count >= drama.total_episodes ? ' · <span style="color:#2ecc71">已下完</span>' : '')}</div>
             </div>
           </div>
           <div class="drama-actions">
@@ -278,11 +307,15 @@ async function loadFiles() {
             <button class="small danger" onclick="deleteDrama('${drama.name}')">删除</button>
           </div>
         </div>
+        <div id="missing_${drama.name}" class="hidden" style="margin:8px 0;padding:8px;background:#16213e;border-radius:8px;font-size:12px;color:#ff9f43;line-height:1.8"></div>
         <div class="file-grid">
-        ${drama.files.map(f => `<div class="file-chip"><span>${f}</span><button onclick="deleteFile('${drama.name}','${f}')">✕</button></div>`).join('')}
+          ${drama.files.map(f => `<div class="file-chip"><span>${f}</span><button onclick="deleteFile('${drama.name}','${f}')">✕</button></div>`).join('')}
         </div>
       </div>
     `).join('');
+    // 存储 missing_list 供展开用
+    window._missingData = {};
+    d.data.forEach(d => { window._missingData[d.name] = d.missing_list || []; });
   } catch(e) {}
 }
 
