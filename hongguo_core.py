@@ -93,6 +93,9 @@ def resolve_series_id(share_url):
     trimmed = share_url.strip()
     if trimmed.isdigit():
         return trimmed
+    m = re.search(r'https?://[^\s<>"\'，。]+', trimmed)
+    if m:
+        trimmed = m.group(0).rstrip('.,;:!?，。；：！？')
     resp = requests.get(trimmed, headers={"User-Agent": "Mozilla/5.0 (Linux; Android 9; SM-N9860)"}, timeout=30, allow_redirects=True)
     final_url = resp.url
     m = re.search(r"video_series_id=(\d+)", final_url)
@@ -246,11 +249,14 @@ def decrypt_sample(key, nonce, cipher):
     nblocks = (len(cipher) + 15) // 16
     full = bytearray(nblocks * 16)
     for k in range(nblocks):
-        full[k * 16:k * 16 + 8] = nonce[:8]
+        full[k * 16:k * 16 + 8] = bytes(nonce[:8])
         struct.pack_into(">Q", full, k * 16 + 8, k)
-    cipher_ecb = AES.new(key, AES.MODE_ECB)
+    cipher_ecb = AES.new(bytes(key), AES.MODE_ECB)
     ks = cipher_ecb.encrypt(bytes(full))
-    return bytes(c ^ k for c, k in zip(cipher, ks))
+    result = bytearray(len(cipher))
+    for i in range(len(cipher)):
+        result[i] = cipher[i] ^ ks[i]
+    return bytes(result)
 
 
 def parse_boxes(data, start, end):
