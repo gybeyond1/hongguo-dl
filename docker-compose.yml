@@ -1,10 +1,11 @@
 version: "3.8"
 services:
   hongguo-dl:
-    image: gybeyond1/hongguo-dl:latest
+    image: gybeyond/hongguo-dl:latest
     container_name: hongguo-dl
     restart: unless-stopped
     ports:
       - "8080:8080"
     volumes:
       - /volume1/GY/hongguo-downloads:/downloads
+      - /usr/bin/ffmpeg:/usr/local/bin/ffmpeg:ro
