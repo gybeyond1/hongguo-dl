@@ -356,7 +356,7 @@ def decrypt_mp4_file(src_path, dst_path, key):
     def rebuild_box(box):
         children = box["children"]
         if not children:
-            return None
+            return bytes(data[box["off"]:box["off"]+box["size"]])
         new_children = []
         for c in children:
             if c["typ"] in ["senc", "saio", "saiz", "sgpd", "sbgp"]:

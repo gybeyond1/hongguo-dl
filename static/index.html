@@ -42,6 +42,8 @@ button.small { padding: 6px 12px; font-size: 12px; }
 .file-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; margin-top: 8px; }
 .file-chip { background: #16213e; padding: 6px 10px; border-radius: 6px; font-size: 12px; display: flex; justify-content: space-between; align-items: center; }
 .file-chip button { padding: 2px 6px; font-size: 11px; }
+
+/* 登录遮罩 */
 #loginOverlay { position: fixed; inset: 0; background: rgba(15,15,26,0.97); display: flex; align-items: center; justify-content: center; z-index: 999; }
 #loginOverlay .login-box { background: #1a1a2e; padding: 40px; border-radius: 16px; text-align: center; width: 320px; }
 #loginOverlay h2 { color: #e94560; margin-bottom: 20px; }
@@ -51,6 +53,7 @@ button.small { padding: 6px 12px; font-size: 12px; }
 </style>
 </head>
 <body>
+
 <div id="loginOverlay">
   <div class="login-box">
     <h2>🔒 请输入密码</h2>
@@ -59,14 +62,17 @@ button.small { padding: 6px 12px; font-size: 12px; }
     <div id="loginError"></div>
   </div>
 </div>
+
 <div class="container">
 <h1>🎬 红果短剧下载器</h1>
+
 <div class="card">
   <div class="row">
     <input id="urlInput" placeholder="粘贴分享链接或 series_id">
     <button onclick="parseDrama()">解析</button>
   </div>
 </div>
+
 <div id="infoCard" class="card hidden">
   <div class="info">
     <img id="cover" class="cover" src="">
@@ -86,43 +92,73 @@ button.small { padding: 6px 12px; font-size: 12px; }
     <button onclick="startDownload()">开始下载选中集数</button>
   </div>
 </div>
+
 <div id="progressCard" class="card hidden">
   <h3>下载进度</h3>
   <div id="progressText"></div>
   <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%">0%</div></div>
   <div id="errorList"></div>
 </div>
+
 <div class="card">
   <h3>已下载文件</h3>
   <div id="fileList"></div>
 </div>
 </div>
+
 <script>
 let episodes = [];
 let currentSeriesId = '';
 let selectedEps = new Set();
 let pollTimer = null;
 let authToken = localStorage.getItem('authToken') || '';
+
 async function apiFetch(url, options = {}) {
   options.headers = options.headers || {};
   options.headers['X-Auth-Token'] = authToken;
   const r = await fetch(url, options);
-  if (r.status === 401) { document.getElementById('loginOverlay').style.display = 'flex'; throw new Error('未授权'); }
+  if (r.status === 401) {
+    document.getElementById('loginOverlay').style.display = 'flex';
+    throw new Error('未授权');
+  }
   return r;
 }
+
 async function checkConfig() {
   const r = await fetch('/api/config');
   const d = await r.json();
-  if (!d.need_auth) { document.getElementById('loginOverlay').style.display = 'none'; loadFiles(); }
-  else if (authToken) { try { await apiFetch('/api/files'); document.getElementById('loginOverlay').style.display = 'none'; loadFiles(); } catch(e) { authToken=''; localStorage.removeItem('authToken'); } }
+  if (!d.need_auth) {
+    document.getElementById('loginOverlay').style.display = 'none';
+    loadFiles();
+  } else {
+    if (authToken) {
+      try {
+        await apiFetch('/api/files');
+        document.getElementById('loginOverlay').style.display = 'none';
+        loadFiles();
+      } catch(e) {
+        authToken = '';
+        localStorage.removeItem('authToken');
+      }
+    }
+  }
 }
+
 async function doLogin() {
   const pwd = document.getElementById('loginPwd').value;
   const r = await fetch('/api/login', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({password: pwd})});
   const d = await r.json();
-  if (d.code === 0) { authToken = pwd; localStorage.setItem('authToken', pwd); document.getElementById('loginOverlay').style.display = 'none'; document.getElementById('loginError').textContent=''; loadFiles(); }
-  else { document.getElementById('loginError').textContent = d.msg || '密码错误'; }
+  if (d.code === 0) {
+    authToken = pwd;
+    localStorage.setItem('authToken', pwd);
+    document.getElementById('loginOverlay').style.display = 'none';
+    document.getElementById('loginError').textContent = '';
+    loadFiles();
+  } else {
+    document.getElementById('loginError').textContent = d.msg || '密码错误';
+  }
 }
+
 async function parseDrama() {
   const url = document.getElementById('urlInput').value.trim();
   if (!url) return;
@@ -141,6 +177,7 @@ async function parseDrama() {
     document.getElementById('infoCard').classList.remove('hidden');
   } catch(e) { alert('错误: ' + e.message); }
 }
+
 function renderEpGrid() {
   const grid = document.getElementById('epGrid');
   grid.innerHTML = '';
@@ -152,6 +189,7 @@ function renderEpGrid() {
     grid.appendChild(div);
   });
 }
+
 function selectAll(sel) { selectedEps = sel ? new Set(episodes.map(e => e.vid_index)) : new Set(); renderEpGrid(); }
 function selectRange(a, b) {
   const n = episodes.length;
@@ -160,6 +198,7 @@ function selectRange(a, b) {
   for (let i = start; i <= end; i++) selectedEps.add(i + 1);
   renderEpGrid();
 }
+
 async function startDownload() {
   if (!currentSeriesId) { alert('请先解析剧集'); return; }
   const eps = Array.from(selectedEps);
@@ -170,6 +209,7 @@ async function startDownload() {
   document.getElementById('progressCard').classList.remove('hidden');
   pollProgress(j.task_id);
 }
+
 function pollProgress(tid) {
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = setInterval(async () => {
@@ -187,26 +227,36 @@ function pollProgress(tid) {
     } catch(e) {}
   }, 2000);
 }
+
 async function deleteDrama(name) {
   if (!confirm(`确定删除《${name}》全部文件？`)) return;
   await apiFetch('/api/delete', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({drama: name})});
   loadFiles();
 }
+
 async function deleteFile(drama, filename) {
   if (!confirm(`删除 ${filename}？`)) return;
   await apiFetch('/api/delete', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({drama, filename})});
   loadFiles();
 }
+
 async function mergeDrama(name) {
   if (!confirm(`合并《${name}》所有集数为一个视频？（不重编码，速度很快）`)) return;
   const btn = event.target;
-  btn.disabled = true; btn.textContent = '合并中...';
+  btn.disabled = true;
+  btn.textContent = '合并中...';
   const r = await apiFetch('/api/merge', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({drama: name})});
   const d = await r.json();
-  if (d.code === 0) { alert(`合并完成: ${d.data.file} (${d.data.size_mb}MB)`); loadFiles(); }
-  else { alert('合并失败: ' + d.msg); }
-  btn.disabled = false; btn.textContent = '合并全集';
+  if (d.code === 0) {
+    alert(`合并完成: ${d.data.file} (${d.data.size_mb}MB)`);
+    loadFiles();
+  } else {
+    alert('合并失败: ' + d.msg);
+  }
+  btn.disabled = false;
+  btn.textContent = '合并全集';
 }
+
 async function loadFiles() {
   try {
     const r = await apiFetch('/api/files');
@@ -220,7 +270,7 @@ async function loadFiles() {
             ${drama.cover ? `<img class="drama-cover" src="${drama.cover}" loading="lazy">` : ''}
             <div class="drama-text">
               <div class="drama-name">📁 ${drama.title || drama.name}</div>
-              <div class="drama-meta">${drama.count}集 · ${drama.size_mb}MB</div>
+              <div class="drama-meta">${drama.count}集 · ${drama.size_mb}MB${drama.total_episodes ? ` · 共${drama.total_episodes}集` : ''}${drama.missing > 0 ? ` · <span style="color:#ff9f43">缺${drama.missing}集</span>` : (drama.total_episodes && drama.count >= drama.total_episodes ? ' · <span style="color:#2ecc71">已下完</span>' : '')}</div>
             </div>
           </div>
           <div class="drama-actions">
@@ -229,12 +279,13 @@ async function loadFiles() {
           </div>
         </div>
         <div class="file-grid">
-          ${drama.files.map(f => `<div class="file-chip"><span>${f}</span><button onclick="deleteFile('${drama.name}','${f}')">✕</button></div>`).join('')}
+        ${drama.files.map(f => `<div class="file-chip"><span>${f}</span><button onclick="deleteFile('${drama.name}','${f}')">✕</button></div>`).join('')}
         </div>
       </div>
     `).join('');
   } catch(e) {}
 }
+
 checkConfig();
 </script>
 </body>

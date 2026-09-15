@@ -106,8 +106,9 @@ def start_download(req: DownloadRequest):
             os.makedirs(drama_dir, exist_ok=True)
 
             meta_path = os.path.join(drama_dir, ".meta.json")
+            total_eps = len(info["episodes"])
             with open(meta_path, "w") as f:
-                json.dump({"title": title, "cover": cover, "series_id": req.series_id}, f, ensure_ascii=False)
+                json.dump({"title": title, "cover": cover, "series_id": req.series_id, "total_episodes": total_eps}, f, ensure_ascii=False)
 
             selected_vids = set()
             for ep in info["episodes"]:
@@ -199,6 +200,7 @@ def list_files():
             total_size = sum(f.stat().st_size for f in files)
             title = drama_dir.name
             cover = ""
+            total_eps = 0
             meta_path = drama_dir / ".meta.json"
             if meta_path.exists():
                 try:
@@ -206,6 +208,7 @@ def list_files():
                         meta = json.load(f)
                         title = meta.get("title", drama_dir.name)
                         cover = meta.get("cover", "")
+                        total_eps = meta.get("total_episodes", 0)
                 except Exception:
                     pass
             result.append({
@@ -213,6 +216,8 @@ def list_files():
                 "title": title,
                 "cover": cover,
                 "count": len(files),
+                "total_episodes": total_eps,
+                "missing": total_eps - len(files) if total_eps else 0,
                 "size_mb": round(total_size / 1024 / 1024, 1),
                 "files": [f.name for f in files],
             })
