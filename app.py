@@ -40,7 +40,11 @@ async def auth_middleware(request: Request, call_next):
         token = request.headers.get("X-Auth-Token", "")
         if token != APP_PASSWORD:
             return JSONResponse({"code": -1, "msg": "未授权"}, status_code=401)
-    return await call_next(request)
+    response = await call_next(request)
+    # 禁止缓存 HTML/JS，确保前端始终最新
+    if request.url.path == "/" or request.url.path.endswith(".html") or request.url.path.endswith(".js"):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return response
 
 
 download_tasks = {}
