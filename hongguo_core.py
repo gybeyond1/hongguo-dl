@@ -391,9 +391,9 @@ def decrypt_mp4_file(src_path, dst_path, key):
                     p += esize
                 stsd_hdr = bytearray(data[c["off"]:content+8])
                 struct.pack_into(">I", stsd_hdr, 12, len(entries))
-                result = bytes(stsd_hdr) + b"".join(entries)
+                result = bytearray(bytes(stsd_hdr) + b"".join(entries))
                 struct.pack_into(">I", result, 0, len(result))
-                new_children.append(result)
+                new_children.append(bytes(result))
             else:
                 sub = rebuild_box(c)
                 if sub is not None:
