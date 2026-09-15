@@ -10,8 +10,8 @@ import subprocess
 import threading
 import time
 from pathlib import Path
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -22,6 +22,14 @@ APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 app = FastAPI(title="红果短剧下载器")
+
+
+def check_auth(request: Request):
+    if not APP_PASSWORD:
+        return
+    token = request.headers.get("X-Auth-Token", "")
+    if token != APP_PASSWORD:
+        raise HTTPException(status_code=401, detail="未授权")
 
 
 @app.middleware("http")
@@ -105,6 +113,7 @@ def start_download(req: DownloadRequest):
             drama_dir = os.path.join(DOWNLOAD_DIR, safe_name)
             os.makedirs(drama_dir, exist_ok=True)
 
+            # 保存元信息
             meta_path = os.path.join(drama_dir, ".meta.json")
             total_eps = len(info["episodes"])
             with open(meta_path, "w") as f:
@@ -132,14 +141,14 @@ def start_download(req: DownloadRequest):
 
                 try:
                     enc_path = out_path + ".enc"
+                    video_url = None
+                    spade_a = None
                     dl_headers = {
                         "User-Agent": "Mozilla/5.0 (Linux; Android 9; SM-N9860) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
                         "Referer": "https://novelquickapp.com/",
                         "Origin": "https://novelquickapp.com",
                         "Accept": "*/*",
                     }
-                    r = None
-                    spade_a = None
                     for attempt in range(3):
                         video_url, spade_a = hg.fetch_play_url(vid)
                         if not video_url:
@@ -148,12 +157,12 @@ def start_download(req: DownloadRequest):
                             r = hg.requests.get(video_url, headers=dl_headers, timeout=120)
                             r.raise_for_status()
                             break
-                        except Exception:
+                        except Exception as dl_err:
                             if attempt < 2:
                                 time.sleep(2)
                                 continue
                             raise
-                    if r is None:
+                    else:
                         raise Exception("无播放地址")
                     with open(enc_path, "wb") as f:
                         f.write(r.content)
@@ -198,6 +207,7 @@ def list_files():
         if drama_dir.is_dir():
             files = sorted(drama_dir.glob("*.mp4"))
             total_size = sum(f.stat().st_size for f in files)
+            # 读取元信息
             title = drama_dir.name
             cover = ""
             total_eps = 0
@@ -211,13 +221,24 @@ def list_files():
                         total_eps = meta.get("total_episodes", 0)
                 except Exception:
                     pass
+            # 计算缺集列表
+            import re as _re
+            downloaded_eps = set()
+            for f in files:
+                m = _re.match(r'(\d+)_', f.name)
+                if m:
+                    downloaded_eps.add(int(m.group(1)))
+            missing_list = []
+            if total_eps:
+                missing_list = [i for i in range(1, total_eps + 1) if i not in downloaded_eps]
             result.append({
                 "name": drama_dir.name,
                 "title": title,
                 "cover": cover,
                 "count": len(files),
                 "total_episodes": total_eps,
-                "missing": total_eps - len(files) if total_eps else 0,
+                "missing": len(missing_list),
+                "missing_list": missing_list,
                 "size_mb": round(total_size / 1024 / 1024, 1),
                 "files": [f.name for f in files],
             })
@@ -249,13 +270,21 @@ def merge_episodes(req: MergeRequest):
         if len(mp4_files) < 2:
             return {"code": -1, "msg": "至少需要2个视频才能合并"}
 
+        # 写 concat 列表文件
         list_path = os.path.join(drama_dir, "concat_list.txt")
         with open(list_path, "w") as f:
             for fp in mp4_files:
                 f.write(f"file '{fp.name}'\n")
 
         output_path = os.path.join(drama_dir, f"{req.drama}_全集.mp4")
-        cmd = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", list_path, "-c", "copy", "-movflags", "+faststart", output_path]
+        cmd = [
+            "ffmpeg", "-y",
+            "-f", "concat", "-safe", "0",
+            "-i", list_path,
+            "-c", "copy",
+            "-movflags", "+faststart",
+            output_path
+        ]
         result = subprocess.run(cmd, capture_output=True, text=True, cwd=drama_dir, timeout=300)
         os.remove(list_path)
 
