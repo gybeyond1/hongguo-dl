@@ -45,6 +45,8 @@ async def auth_middleware(request: Request, call_next):
 
 download_tasks = {}
 task_lock = threading.Lock()
+merge_tasks = {}
+merge_lock = threading.Lock()
 
 
 def load_tasks():
@@ -272,23 +274,35 @@ def list_files():
                 except Exception:
                     pass
             downloaded_eps = set()
+            merged_file = None
             for f in files:
                 m = re.match(r'(\d+)_', f.name)
                 if m:
                     downloaded_eps.add(int(m.group(1)))
+                elif f.name.endswith('_全集.mp4'):
+                    merged_file = f.name
             missing_list = []
-            if total_eps:
+            if total_eps and not merged_file:
                 missing_list = [i for i in range(1, total_eps + 1) if i not in downloaded_eps]
+            # merged 时只显示合并文件
+            if merged_file:
+                display_files = [merged_file]
+                file_count = 1
+            else:
+                display_files = [f.name for f in files]
+                file_count = len(files)
             result.append({
                 "name": drama_dir.name,
                 "title": title,
                 "cover": cover,
-                "count": len(files),
+                "count": file_count,
                 "total_episodes": total_eps,
                 "missing": len(missing_list),
                 "missing_list": missing_list,
+                "merged": bool(merged_file),
+                "merged_file": merged_file or "",
                 "size_mb": round(total_size / 1024 / 1024, 1),
-                "files": [f.name for f in files],
+                "files": display_files,
             })
     return {"code": 0, "data": result}
 
@@ -314,34 +328,87 @@ def merge_episodes(req: MergeRequest):
         if not os.path.isdir(drama_dir):
             return {"code": -1, "msg": "目录不存在"}
 
-        mp4_files = sorted(Path(drama_dir).glob("*.mp4"))
+        # 检查是否已有合并任务在跑
+        with merge_lock:
+            if req.drama in merge_tasks and merge_tasks[req.drama]["status"] == "running":
+                return {"code": -1, "msg": "正在合并中"}
+
+        mp4_files = sorted([f for f in Path(drama_dir).glob("*.mp4") if not f.name.endswith("_全集.mp4")])
         if len(mp4_files) < 2:
             return {"code": -1, "msg": "至少需要2个视频才能合并"}
 
-        list_path = os.path.join(drama_dir, "concat_list.txt")
-        with open(list_path, "w") as f:
-            for fp in mp4_files:
-                f.write(f"file '{fp.name}'\n")
+        with merge_lock:
+            merge_tasks[req.drama] = {
+                "status": "running",
+                "logs": [],
+                "total": len(mp4_files),
+                "done": 0,
+            }
 
-        output_path = os.path.join(drama_dir, f"{req.drama}_全集.mp4")
-        cmd = [
-            "ffmpeg", "-y",
-            "-f", "concat", "-safe", "0",
-            "-i", list_path,
-            "-c", "copy",
-            "-movflags", "+faststart",
-            output_path
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True, cwd=drama_dir, timeout=300)
-        os.remove(list_path)
+        def worker():
+            try:
+                list_path = os.path.join(drama_dir, "concat_list.txt")
+                with open(list_path, "w") as f:
+                    for fp in mp4_files:
+                        f.write(f"file '{fp.name}'\n")
 
-        if result.returncode != 0:
-            return {"code": -1, "msg": f"ffmpeg错误: {result.stderr[-500:]}"}
+                output_path = os.path.join(drama_dir, f"{req.drama}_全集.mp4")
+                cmd = [
+                    "ffmpeg", "-y",
+                    "-f", "concat", "-safe", "0",
+                    "-i", list_path,
+                    "-c", "copy",
+                    "-movflags", "+faststart",
+                    output_path
+                ]
+                proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                         text=True, cwd=drama_dir)
+                for line in proc.stdout:
+                    line = line.strip()
+                    if line:
+                        with merge_lock:
+                            merge_tasks[req.drama]["logs"].append(line)
+                            if len(merge_tasks[req.drama]["logs"]) > 100:
+                                merge_tasks[req.drama]["logs"] = merge_tasks[req.drama]["logs"][-100:]
+                proc.wait()
+                os.remove(list_path)
 
-        size_mb = round(os.path.getsize(output_path) / 1024 / 1024, 1)
-        return {"code": 0, "data": {"file": f"{req.drama}_全集.mp4", "size_mb": size_mb}}
+                if proc.returncode != 0:
+                    with merge_lock:
+                        merge_tasks[req.drama]["status"] = "error"
+                        merge_tasks[req.drama]["logs"].append("❌ 合并失败")
+                    return
+
+                # 合并成功，删除单集文件
+                for fp in mp4_files:
+                    try:
+                        os.remove(fp)
+                    except Exception:
+                        pass
+
+                size_mb = round(os.path.getsize(output_path) / 1024 / 1024, 1)
+                with merge_lock:
+                    merge_tasks[req.drama]["status"] = "done"
+                    merge_tasks[req.drama]["done"] = len(mp4_files)
+                    merge_tasks[req.drama]["logs"].append(f"✅ 合并完成: {size_mb}MB")
+            except Exception as e:
+                with merge_lock:
+                    merge_tasks[req.drama]["status"] = "error"
+                    merge_tasks[req.drama]["logs"].append(f"❌ {e}")
+
+        threading.Thread(target=worker, daemon=True).start()
+        return {"code": 0, "data": {"drama": req.drama, "total": len(mp4_files)}}
     except Exception as e:
         return {"code": -1, "msg": str(e)}
+
+
+@app.get("/api/merge_status/{drama}")
+def merge_status(drama: str):
+    with merge_lock:
+        t = merge_tasks.get(drama)
+        if not t:
+            return {"code": 0, "data": {"status": "none"}}
+        return {"code": 0, "data": dict(t)}
 
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
