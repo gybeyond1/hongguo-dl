@@ -22,26 +22,41 @@ button.small { padding: 6px 12px; font-size: 12px; }
 .ep-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 8px; margin-top: 12px; }
 .ep { background: #16213e; padding: 10px; text-align: center; border-radius: 8px; cursor: pointer; border: 2px solid transparent; font-size: 13px; }
 .ep.selected { border-color: #e94560; background: #1a1a3e; }
-.progress-bar { background: #16213e; border-radius: 8px; height: 24px; overflow: hidden; margin: 12px 0; }
-.progress-fill { background: linear-gradient(90deg, #e94560, #ff6b9d); height: 100%; transition: width 0.3s; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #fff; }
 .info { display: flex; align-items: center; gap: 16px; }
 .cover { width: 120px; border-radius: 8px; }
 .ep-title { font-size: 18px; font-weight: 700; }
 .ep-meta { color: #888; font-size: 13px; margin-top: 4px; }
 .hidden { display: none; }
 .btn-group { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
-.error { color: #ff6b6b; padding: 10px; background: #2a1a1a; border-radius: 8px; margin: 8px 0; }
+.error { color: #ff6b6b; padding: 6px 10px; background: #2a1a1a; border-radius: 6px; margin: 4px 0; font-size: 12px; }
 .drama-item { padding: 12px; border-bottom: 1px solid #333; }
 .drama-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 8px; }
 .drama-info { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
 .drama-cover { width: 48px; height: 64px; border-radius: 6px; object-fit: cover; flex-shrink: 0; background: #16213e; }
-.drama-text { min-width: 0; }
+.drama-text { min-width: 0; flex: 1; }
 .drama-name { font-weight: 700; }
-.drama-meta { color: #888; font-size: 12px; }
-.drama-actions { display: flex; gap: 8px; }
+.drama-meta { color: #888; font-size: 12px; margin-top: 2px; }
+.drama-actions { display: flex; gap: 8px; flex-shrink: 0; }
 .file-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; margin-top: 8px; }
 .file-chip { background: #16213e; padding: 6px 10px; border-radius: 6px; font-size: 12px; display: flex; justify-content: space-between; align-items: center; }
 .file-chip button { padding: 2px 6px; font-size: 11px; }
+
+/* 缺集展开 */
+.missing-toggle { color: #ff9f43; cursor: pointer; text-decoration: underline; }
+.missing-detail { margin: 8px 0; padding: 10px; background: #16213e; border-radius: 8px; font-size: 12px; color: #ccc; line-height: 1.8; max-height: 200px; overflow-y: auto; }
+
+/* 进度面板 */
+.task-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #2a2a4a; }
+.task-row:last-child { border-bottom: none; }
+.task-summary { flex: 1; min-width: 0; }
+.task-name { font-weight: 600; font-size: 14px; }
+.task-detail { color: #888; font-size: 12px; margin-top: 2px; }
+.task-bar { background: #16213e; border-radius: 4px; height: 6px; margin-top: 6px; overflow: hidden; }
+.task-bar-fill { background: linear-gradient(90deg, #e94560, #ff6b9d); height: 100%; transition: width 0.3s; }
+.task-status { font-size: 12px; margin-left: 10px; flex-shrink: 0; }
+.task-status.running { color: #2ecc71; }
+.task-status.done { color: #2ecc71; }
+.task-status.error { color: #ff6b6b; }
 
 /* 登录遮罩 */
 #loginOverlay { position: fixed; inset: 0; background: rgba(15,15,26,0.97); display: flex; align-items: center; justify-content: center; z-index: 999; }
@@ -68,7 +83,7 @@ button.small { padding: 6px 12px; font-size: 12px; }
 
 <div class="card">
   <div class="row">
-    <input id="urlInput" placeholder="粘贴分享链接或 series_id">
+    <input id="urlInput" placeholder="粘贴分享链接">
     <button onclick="parseDrama()">解析</button>
   </div>
 </div>
@@ -94,15 +109,11 @@ button.small { padding: 6px 12px; font-size: 12px; }
 </div>
 
 <div id="progressCard" class="card hidden">
-  <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="toggleProgress()">
-    <h3 style="margin:0">📊 下载进度</h3>
-    <span id="progressToggle" style="color:#888;font-size:14px">▼</span>
+  <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="toggleTaskPanel()">
+    <h3 style="margin:0">📊 下载任务</h3>
+    <span id="taskToggle" style="color:#888;font-size:14px">▶</span>
   </div>
-  <div id="progressBody">
-    <div id="progressText"></div>
-    <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%">0%</div></div>
-    <div id="errorList"></div>
-  </div>
+  <div id="taskBody" class="hidden"></div>
 </div>
 
 <div class="card">
@@ -117,6 +128,7 @@ let currentSeriesId = '';
 let selectedEps = new Set();
 let pollTimer = null;
 let authToken = localStorage.getItem('authToken') || '';
+let runningTaskId = null;
 
 async function apiFetch(url, options = {}) {
   options.headers = options.headers || {};
@@ -134,14 +146,13 @@ async function checkConfig() {
   const d = await r.json();
   if (!d.need_auth) {
     document.getElementById('loginOverlay').style.display = 'none';
-    loadFiles();
+    init();
   } else {
     if (authToken) {
-      // 验证 token 是否有效
       try {
         await apiFetch('/api/files');
         document.getElementById('loginOverlay').style.display = 'none';
-        loadFiles();
+        init();
       } catch(e) {
         authToken = '';
         localStorage.removeItem('authToken');
@@ -159,10 +170,15 @@ async function doLogin() {
     localStorage.setItem('authToken', pwd);
     document.getElementById('loginOverlay').style.display = 'none';
     document.getElementById('loginError').textContent = '';
-    loadFiles();
+    init();
   } else {
     document.getElementById('loginError').textContent = d.msg || '密码错误';
   }
+}
+
+function init() {
+  loadFiles();
+  loadTasks();
 }
 
 async function parseDrama() {
@@ -212,26 +228,68 @@ async function startDownload() {
   const resp = await apiFetch('/api/download', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({series_id: currentSeriesId, episodes: eps})});
   const j = await resp.json();
   if (j.code !== 0) { alert('下载启动失败: ' + j.msg); return; }
+  runningTaskId = j.task_id;
   document.getElementById('progressCard').classList.remove('hidden');
-  pollProgress(j.task_id);
+  startPoll();
 }
 
-function pollProgress(tid) {
+function startPoll() {
   if (pollTimer) clearInterval(pollTimer);
-  pollTimer = setInterval(async () => {
-    try {
-      const r = await apiFetch('/api/progress/' + tid);
-      const d = await r.json();
-      if (d.code !== 0) return;
-      const t = d.data;
-      const pct = t.total > 0 ? Math.round(t.done / t.total * 100) : 0;
-      document.getElementById('progressText').innerHTML = `${t.done}/${t.total} ${t.current}`;
-      document.getElementById('progressFill').style.width = pct + '%';
-      document.getElementById('progressFill').textContent = pct + '%';
-      if (t.errors.length) document.getElementById('errorList').innerHTML = t.errors.map(e => '<div class="error">❌ ' + e + '</div>').join('');
-      if (t.status === 'done' || t.status === 'error') { clearInterval(pollTimer); loadFiles(); }
-    } catch(e) {}
+  pollTimer = setInterval(() => {
+    loadTasks();
   }, 2000);
+}
+
+async function loadTasks() {
+  try {
+    const r = await apiFetch('/api/tasks');
+    const d = await r.json();
+    if (d.code !== 0) return;
+    const tasks = d.data;
+    const card = document.getElementById('progressCard');
+    const body = document.getElementById('taskBody');
+
+    if (tasks.length === 0) {
+      card.classList.add('hidden');
+      return;
+    }
+    card.classList.remove('hidden');
+
+    body.innerHTML = tasks.map(t => {
+      const pct = t.total > 0 ? Math.round(t.done / t.total * 100) : 0;
+      const statusText = t.status === 'running' ? '下载中' : (t.status === 'done' ? '已完成' : '失败');
+      const title = t.title || (t.series_id ? '任务 ' + t.task_id : '任务');
+      const errHtml = (t.errors && t.errors.length)
+        ? `<div style="margin-top:6px">${t.errors.slice(0,5).map(e => '<div class="error">❌ ' + e + '</div>').join('')}${t.errors.length > 5 ? `<div style="color:#888;font-size:11px;margin-top:4px">还有 ${t.errors.length - 5} 个错误...</div>` : ''}</div>`
+        : '';
+      return `<div class="task-row">
+        <div class="task-summary">
+          <div class="task-name">${title}</div>
+          <div class="task-detail">${t.done}/${t.total} · ${t.current || ''} ${t.started_at || ''}</div>
+          <div class="task-bar"><div class="task-bar-fill" style="width:${pct}%"></div></div>
+          ${errHtml}
+        </div>
+        <div class="task-status ${t.status}">${statusText}</div>
+      </div>`;
+    }).join('');
+
+    // 如果有完成的任务，刷新文件列表
+    if (tasks.some(t => t.status === 'done' || t.status === 'error')) {
+      loadFiles();
+    }
+  } catch(e) {}
+}
+
+function toggleTaskPanel() {
+  const body = document.getElementById('taskBody');
+  const toggle = document.getElementById('taskToggle');
+  if (body.classList.contains('hidden')) {
+    body.classList.remove('hidden');
+    toggle.textContent = '▼';
+  } else {
+    body.classList.add('hidden');
+    toggle.textContent = '▶';
+  }
 }
 
 async function deleteDrama(name) {
@@ -263,23 +321,25 @@ async function mergeDrama(name) {
   btn.textContent = '合并全集';
 }
 
-function toggleProgress() {
-  const body = document.getElementById('progressBody');
-  const toggle = document.getElementById('progressToggle');
-  if (body.classList.contains('hidden')) {
-    body.classList.remove('hidden');
-    toggle.textContent = '▼';
-  } else {
-    body.classList.add('hidden');
-    toggle.textContent = '▶';
-  }
-}
-
 function toggleMissing(name) {
   const el = document.getElementById('missing_' + name);
   if (el.classList.contains('hidden')) {
     const list = window._missingData[name] || [];
-    el.textContent = '缺集: ' + list.join(', ');
+    if (list.length > 0) {
+      // 智能分组连续区间
+      let ranges = [];
+      let start = list[0], prev = list[0];
+      for (let i = 1; i < list.length; i++) {
+        if (list[i] === prev + 1) {
+          prev = list[i];
+        } else {
+          ranges.push(start === prev ? start + '' : start + '-' + prev);
+          start = prev = list[i];
+        }
+      }
+      ranges.push(start === prev ? start + '' : start + '-' + prev);
+      el.innerHTML = `<div style="color:#ff9f43;margin-bottom:4px">缺 ${list.length} 集：</div><div style="color:#ccc">${ranges.join('、')}</div>`;
+    }
     el.classList.remove('hidden');
   } else {
     el.classList.add('hidden');
@@ -292,28 +352,33 @@ async function loadFiles() {
     const d = await r.json();
     const el = document.getElementById('fileList');
     if (d.data.length === 0) { el.innerHTML = '<div style="color:#666">暂无下载</div>'; return; }
-    el.innerHTML = d.data.map(drama => `
-      <div class="drama-item">
+    el.innerHTML = d.data.map(drama => {
+      let missingHtml = '';
+      if (drama.missing > 0) {
+        missingHtml = ` · <span class="missing-toggle" onclick="toggleMissing('${drama.name}')">缺${drama.missing}集 ▾</span>`;
+      } else if (drama.total_episodes && drama.count >= drama.total_episodes) {
+        missingHtml = ' · <span style="color:#2ecc71">✓ 已下完</span>';
+      }
+      return `<div class="drama-item">
         <div class="drama-header">
           <div class="drama-info">
             ${drama.cover ? `<img class="drama-cover" src="${drama.cover}" loading="lazy">` : ''}
             <div class="drama-text">
               <div class="drama-name">📁 ${drama.title || drama.name}</div>
-              <div class="drama-meta">${drama.count}集 · ${drama.size_mb}MB${drama.total_episodes ? ` · 共${drama.total_episodes}集` : ''}${drama.missing > 0 ? ` · <span style="color:#ff9f43;cursor:pointer;text-decoration:underline" onclick="toggleMissing('${drama.name}')">缺${drama.missing}集 ▾</span>` : (drama.total_episodes && drama.count >= drama.total_episodes ? ' · <span style="color:#2ecc71">已下完</span>' : '')}</div>
+              <div class="drama-meta">${drama.count}集 · ${drama.size_mb}MB${drama.total_episodes ? ` · 共${drama.total_episodes}集` : ''}${missingHtml}</div>
             </div>
           </div>
           <div class="drama-actions">
-            <button class="small secondary" onclick="mergeDrama('${drama.name}')">合并全集</button>
+            <button class="small secondary" onclick="mergeDrama('${drama.name}')">合并</button>
             <button class="small danger" onclick="deleteDrama('${drama.name}')">删除</button>
           </div>
         </div>
-        <div id="missing_${drama.name}" class="hidden" style="margin:8px 0;padding:8px;background:#16213e;border-radius:8px;font-size:12px;color:#ff9f43;line-height:1.8"></div>
+        <div id="missing_${drama.name}" class="hidden missing-detail"></div>
         <div class="file-grid">
           ${drama.files.map(f => `<div class="file-chip"><span>${f}</span><button onclick="deleteFile('${drama.name}','${f}')">✕</button></div>`).join('')}
         </div>
-      </div>
-    `).join('');
-    // 存储 missing_list 供展开用
+      </div>`;
+    }).join('');
     window._missingData = {};
     d.data.forEach(d => { window._missingData[d.name] = d.missing_list || []; });
   } catch(e) {}
