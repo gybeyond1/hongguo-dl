@@ -10,8 +10,8 @@ import subprocess
 import threading
 import time
 from pathlib import Path
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -26,7 +26,8 @@ app = FastAPI(title="红果短剧下载器")
 
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
-    if APP_PASSWORD and request.url.path.startswith("/api/"):
+    public_paths = ["/api/login", "/api/config"]
+    if APP_PASSWORD and request.url.path.startswith("/api/") and request.url.path not in public_paths:
         token = request.headers.get("X-Auth-Token", "")
         if token != APP_PASSWORD:
             return JSONResponse({"code": -1, "msg": "未授权"}, status_code=401)
