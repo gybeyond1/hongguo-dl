@@ -565,11 +565,16 @@ public class MainActivity extends Activity {
                     dbg("HTTP response code=" + code);
                     String finalUrl = conn.getURL().toString();
                     InputStream is = (code >= 200 && code < 400) ? conn.getInputStream() : conn.getErrorStream();
+                    String encoding = conn.getContentEncoding();
+                    if (encoding != null && encoding.contains("gzip")) {
+                        is = new java.util.zip.GZIPInputStream(is);
+                    }
                     StringBuilder sb = new StringBuilder();
                     byte[] buf = new byte[4096];
                     int n;
                     while ((n = is.read(buf)) != -1) sb.append(new String(buf, 0, n, "UTF-8"));
                     String resp = sb.toString();
+                    dbg("HTTP response size=" + resp.length() + " body=" + resp.substring(0, Math.min(resp.length(), 200)));
                     conn.disconnect();
                     String escaped = resp.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "");
                     String escUrl = finalUrl.replace("\\", "\\\\").replace("'", "\\'");
