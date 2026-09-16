@@ -354,12 +354,30 @@ window.onMergeDone=(cid,code,msg)=>{
   else{AndroidBridge.toast('合并失败: '+msg.slice(0,100))}
 };
 
+window.onFfmpegDownloaded=(path)=>{AndroidBridge.toast('ffmpeg下载完成');};
+window.onFfmpegError=(msg)=>{AndroidBridge.toast('ffmpeg下载失败: '+msg);};
+
 function mergeDrama(id,source){
-  if(!cloudHost){AndroidBridge.toast('请先在设置(⚙️)配置NAS地址');return}
-  AndroidBridge.toast('正在提交NAS合并...');
-  const rid='cb'+(++httpCallbackId);
-  httpCallbacks[rid]={resolve:()=>{AndroidBridge.toast('合并任务已提交');},reject:()=>{}};
-  AndroidBridge.httpRequest(`http://${cloudHost}:${cloudPort}/api/merge`,'POST',JSON.stringify({drama:id}),rid);
+  if(source==='cloud'){
+    // Cloud: call NAS
+    if(!cloudHost){AndroidBridge.toast('请先配置NAS');return}
+    AndroidBridge.toast('正在提交NAS合并...');
+    const rid='cb'+(++httpCallbackId);
+    httpCallbacks[rid]={resolve:()=>{AndroidBridge.toast('合并任务已提交');},reject:()=>{}};
+    AndroidBridge.httpRequest(`http://${cloudHost}:${cloudPort}/api/merge`,'POST',JSON.stringify({drama:id}),rid);
+    return;
+  }
+  // Local: check ffmpeg
+  const ffmpegPath=AndroidBridge.getFfmpegPath();
+  if(!ffmpegPath){
+    // Need to download ffmpeg
+    AndroidBridge.toast('需要下载ffmpeg模块');
+    AndroidBridge.downloadFfmpeg('ff');
+    return;
+  }
+  // Merge locally
+  AndroidBridge.toast('开始本地合并...');
+  AndroidBridge.mergeVideos(downloadDir+'/'+id, downloadDir+'/'+id+'.mp4', 'mg'+Date.now());
 }
 </script>
 </body>
