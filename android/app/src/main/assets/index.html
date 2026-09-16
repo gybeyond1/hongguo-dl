@@ -179,10 +179,14 @@ window.onFileError=(msg)=>{
 
 async function resolveSeriesId(url){
   url=url.trim();
+  dbg('resolveSeriesId input: '+url.slice(0,100));
   if(/^\d+$/.test(url))return url;
   const m=url.match(/https?:\/\/[^\s<>"'，。]+/);
   if(m)url=m[0].replace(/[.,;:!?，。；：！？]+$/,'');
+  dbg('extracted url: '+url);
   const r=await httpGet(url);
+  dbg('httpGet finalUrl: '+r.url);
+  dbg('httpGet body: '+(r.text||'').slice(0,200));
   const finalUrl=r.url;
   let m2=finalUrl.match(/video_series_id=(\d+)/);
   if(m2)return m2[1];
@@ -206,7 +210,9 @@ async function parseDrama(){
   AndroidBridge.toast('解析中...');
   try{
     const sid=await resolveSeriesId(url);
+    dbg('sid='+sid);
     const r=await apiCall('/novel/player/multi_video_detail/preload/v1',{biz_param:DETAIL_BIZ_PARAM,dr_scene:"preload",series_id:sid});
+    dbg('detail resp: '+(r.text||'').slice(0,200));
     const j=await r.json();
     if(j.code!==0)throw new Error(j.message||'API错误');
     const d=j.data;
