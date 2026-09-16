@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>红果下载器</title>
+<style>
+:root{--bg:#0f0f1a;--card:#1a1a2e;--input:#16213e;--accent:#e94560;--blue:#0f3460;--green:#2ecc71;--orange:#ff9f43;--red:#ff6b6b;--text:#e0e0e0;--dim:#888;--border:#2a2a4a}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{font-family:-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding-bottom:60px}
+.topbar{background:var(--card);padding:12px 16px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:100;border-bottom:1px solid var(--border)}
+.topbar h1{font-size:16px;color:var(--accent);flex:1}
+.settings-btn{background:none;border:none;font-size:20px;padding:4px 8px}
+.container{max-width:860px;margin:0 auto;padding:14px}
+.card{background:var(--card);border-radius:14px;padding:16px;margin-bottom:12px}
+.card-title{font-size:14px;font-weight:700;margin-bottom:10px;display:flex;align-items:center}
+input,button{padding:11px 14px;border:none;border-radius:8px;font-size:14px;outline:none}
+input{background:var(--input);color:#fff;flex:1;min-width:0}
+button{background:var(--accent);color:#fff;cursor:pointer;font-weight:600}
+button:active{opacity:.8}
+button.sec{background:var(--blue)}
+button.sm{padding:5px 10px;font-size:12px;border-radius:6px}
+.row{display:flex;gap:8px;margin-bottom:10px}
+.ep-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(50px,1fr));gap:5px;margin-top:10px}
+.ep{background:var(--input);padding:9px 4px;text-align:center;border-radius:7px;cursor:pointer;border:2px solid transparent;font-size:12px}
+.ep.sel{border-color:var(--accent);background:rgba(233,69,96,.15)}
+.hidden{display:none!important}
+.drama-row{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);align-items:flex-start;position:relative}
+.drama-thumb{width:40px;height:54px;border-radius:6px;object-fit:cover;flex-shrink:0;background:var(--input)}
+.drama-body{flex:1;min-width:0}
+.drama-title{font-weight:700;font-size:13px}
+.drama-sub{color:var(--dim);font-size:11px;margin-top:2px}
+.drama-badge{position:absolute;top:8px;right:0;font-size:10px;padding:2px 6px;border-radius:4px;background:var(--input)}
+.drama-badge.local{color:var(--orange)}
+.drama-badge.cloud{color:var(--blue)}
+.tag{font-size:10px;padding:1px 6px;border-radius:4px;margin-left:4px}
+.tag-ok{background:rgba(46,204,113,.15);color:var(--green)}
+.tag-warn{background:rgba(255,159,67,.15);color:var(--orange);cursor:pointer}
+.dl-btn{width:100%;padding:13px;font-size:15px;border-radius:8px;margin-top:12px}
+.progress-bar{background:var(--input);border-radius:4px;height:6px;margin-top:6px;overflow:hidden}
+.progress-fill{background:linear-gradient(90deg,var(--accent),#ff6b9d);height:100%;transition:width .3s}
+.error-box{color:var(--red);padding:5px 8px;background:rgba(192,57,43,.1);border-radius:6px;margin:4px 0;font-size:11px}
+.settings-panel{position:fixed;inset:0;background:rgba(15,15,26,.97);z-index:200;display:none;align-items:center;justify-content:center}
+.settings-panel.show{display:flex}
+.settings-box{background:var(--card);padding:24px;border-radius:14px;width:min(340px,90vw)}
+.settings-box h2{color:var(--accent);margin-bottom:16px;font-size:18px}
+.settings-box input{width:100%;margin-bottom:8px}
+.settings-box .row{margin-top:8px}
+.cover-lg{width:90px;border-radius:8px;aspect-ratio:3/4;object-fit:cover;flex-shrink:0;background:var(--input)}
+.info-row{display:flex;gap:12px;margin-bottom:12px}
+.mode-pick{display:flex;gap:8px;margin:10px 0}
+.mode-pick button{flex:1;padding:12px;border-radius:8px;border:2px solid var(--border);background:var(--input);color:var(--text);font-size:13px}
+.mode-pick button.picked{border-color:var(--accent);background:rgba(233,69,96,.15);color:var(--accent)}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>🎬 红果下载器</h1>
+  <button class="settings-btn" onclick="showSettings()">⚙️</button>
+</div>
+
+<div class="container">
+  <div class="card">
+    <div class="row">
+      <input id="urlInput" placeholder="粘贴分享链接或剧ID">
+      <button onclick="parseDrama()">解析</button>
+    </div>
+  </div>
+
+  <div id="infoCard" class="card hidden">
+    <div class="info-row">
+      <img id="cover" class="cover-lg" src="" onerror="this.style.display='none'">
+      <div>
+        <div id="dramaTitle" style="font-size:17px;font-weight:700"></div>
+        <div id="dramaMeta" style="color:var(--dim);font-size:12px;margin-top:4px"></div>
+      </div>
+    </div>
+    <div class="row">
+      <button class="sec sm" onclick="selectAll(true)">全选</button>
+      <button class="sec sm" onclick="selectAll(false)">取消</button>
+      <button class="sec sm" onclick="selectRange(1,10)">前10</button>
+      <button class="sec sm" onclick="selectRange(-30,-1)">后30</button>
+    </div>
+    <div class="ep-grid" id="epGrid"></div>
+    <div class="mode-pick">
+      <button id="pickLocal" onclick="pickTarget('local')">📱 下载到本地</button>
+      <button id="pickCloud" onclick="pickTarget('cloud')">☁️ 下载到NAS</button>
+    </div>
+    <button class="dl-btn" onclick="startDownload()">⬇️ 开始下载</button>
+  </div>
+
+  <div id="progressCard" class="card hidden">
+    <div class="card-title">📊 下载进度</div>
+    <div id="progressText"></div>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+    <div id="errorList"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">📁 已下载</div>
+    <div id="fileList"><div style="color:#555;text-align:center;padding:16px">暂无下载</div></div>
+  </div>
+</div>
+
+<div class="settings-panel" id="settingsPanel">
+  <div class="settings-box">
+    <h2>⚙️ NAS 连接</h2>
+    <input id="setHost" placeholder="NAS 地址 (如 192.168.31.76)">
+    <input id="setPort" placeholder="端口 (如 8800)">
+    <input id="setPwd" type="password" placeholder="访问密码">
+    <div class="row">
+      <button style="flex:1" onclick="saveSettings()">保存</button>
+      <button class="sec" style="flex:1" onclick="closeSettings()">关闭</button>
+    </div>
+    <div style="font-size:11px;color:var(--dim);margin-top:8px">
+      配置后可选择「下载到NAS」，由服务器处理下载和解密。
+    </div>
+  </div>
+</div>
+
+<script>
+const API_BASE='https://api5-normal-sinfonlineb.fqnovel.com';
+const UA='Mozilla/5.0 (Linux; Android 9; SM-N9860) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36';
+
+let episodes=[];
+let currentSeriesId='';
+let selectedEps=new Set();
+let downloadDir='/sdcard/Download/HG_Download';
+let cloudHost='',cloudPort='8800',cloudPwd='';
+let downloadTarget='local';
+let failedEps=[];
+
+function hexToBytes(h){const a=new Uint8Array(h.length/2);for(let i=0;i<h.length;i+=2)a[i/2]=parseInt(h.substr(i,2),16);return a}
+
+async function apiPost(path,body){
+  const r=await fetch(API_BASE+path,{method:'POST',headers:{'Content-Type':'application/json','User-Agent':UA},body:JSON.stringify(body)});
+  return r.json();
+}
+
+async function resolveSeriesId(url){
+  url=url.trim();
+  const m=url.match(/https?:\/\/novelquickapp\.com\/s\/([a-zA-Z0-9]+)/);
+  if(m){
+    const r=await fetch(url,{method:'GET',redirect:'follow'});
+    const fu=r.url;
+    const m2=fu.match(/(\d{15,})/);
+    if(m2)return m2[1];
+    throw new Error('无法解析链接中的ID');
+  }
+  if(/^\d{10,}$/.test(url))return url;
+  throw new Error('无法识别链接');
+}
+
+async function fetchEpisodeList(sid){
+  const j=await apiPost('/novel/player/multi_video_detail/preload/v1',{series_id:sid,aid:1967,device_platform:0});
+  if(j.data&&j.data.album){
+    const a=j.data.album;
+    const eps=(a.video_list||[]).map((v,i)=>({vid_index:i+1,vid:String(v.video_id||v.item_id)}));
+    return{series_id:sid,series_title:a.title||'未知',cover:a.cover_url||'',episodes:eps};
+  }
+  throw new Error('解析失败');
+}
+
+async function fetchPlayUrl(vid){
+  const j=await apiPost('/novel/player/multi_video_model/preload/v1',{mixed_video_id_map:{'1004':[vid]},aid:1967});
+  const vi=j.data&&j.data.video_infos&&j.data.video_infos['1004'];
+  if(!vi||!vi[0])throw new Error('无播放地址');
+  const v=vi[0];
+  return{video_url:v.play_url||v.video_url||'',spade_a:v.spade_a||''};
+}
+
+async function deriveKey(spadeA){
+  if(!spadeA)return null;
+  const buf=Uint8Array.from(atob(spadeA),c=>c.charCodeAt(0));
+  const L=buf.length;if(L<3)return null;
+  const k0=buf[0]^buf[1]^buf[2];
+  const x27=k0-0x30,w22=L-k0+0x2f;
+  if(x27<2||w22<2||w22>L-1)return null;
+  const x21=buf.slice(1,1+w22);
+  let w11=0x55,w12=0xfa,w10=0xeb;
+  for(let i=0;i<x21.length;i++){
+    const w13=x21[i];
+    const pc=(i.toString(2).match(/1/g)||[]).length;
+    const w14=(i&1)===0?w12:w11;
+    if(i&1)w11=w13;else w12=w13;
+    x21[i]=(w10-pc+(w14^w13))&0xff;
+  }
+  const c0=x21[0];
+  let hv;
+  if(c0>=0x30&&c0<=0x39)hv=c0-0x30;
+  else if(c0>=0x61&&c0<=0x7a)hv=c0-0x57;
+  else return null;
+  const w9=w22-hv;if(w9<2)return null;
+  const s=String.fromCharCode(...x21.slice(1,1+w9-1));
+  if(s.length!==32)return null;
+  return hexToBytes(s);
+}
+
+async function decryptSample(key,nonce,cipher){
+  const nb=Math.ceil(cipher.length/16);
+  const full=new Uint8Array(nb*16);
+  for(let k=0;k<nb;k++){
+    full.set(nonce.slice(0,8),k*16);
+    new DataView(full.buffer).setBigUint64(k*16+8,BigInt(k),false);
+  }
+  const ck=await crypto.subtle.importKey('raw',key,{name:'AES-ECB'},false,['encrypt']);
+  const ks=await crypto.subtle.encrypt({name:'AES-ECB'},ck,full);
+  const ksb=new Uint8Array(ks);
+  const out=new Uint8Array(cipher.length);
+  for(let i=0;i<cipher.length;i++)out[i]=cipher[i]^ksb[i];
+  return out;
+}
+
+async function parseDrama(){
+  const url=document.getElementById('urlInput').value.trim();
+  if(!url)return;
+  try{
+    const sid=await resolveSeriesId(url);
+    const info=await fetchEpisodeList(sid);
+    episodes=info.episodes;currentSeriesId=info.series_id;
+    selectedEps=new Set(episodes.map(e=>e.vid_index));
+    document.getElementById('dramaTitle').textContent=info.series_title;
+    document.getElementById('dramaMeta').textContent=`共${episodes.length}集`;
+    if(info.cover){document.getElementById('cover').src=info.cover;document.getElementById('cover').style.display=''}
+    renderEpGrid();
+    document.getElementById('infoCard').classList.remove('hidden');
+  }catch(e){alert('解析失败: '+e.message)}
+}
+
+function renderEpGrid(){
+  const g=document.getElementById('epGrid');g.innerHTML='';
+  episodes.forEach(ep=>{
+    const d=document.createElement('div');
+    d.className='ep'+(selectedEps.has(ep.vid_index)?' sel':'');
+    d.textContent=ep.vid_index;
+    d.onclick=()=>{selectedEps.has(ep.vid_index)?selectedEps.delete(ep.vid_index):selectedEps.add(ep.vid_index);renderEpGrid()};
+    g.appendChild(d);
+  });
+}
+function selectAll(s){selectedEps=s?new Set(episodes.map(e=>e.vid_index)):new Set();renderEpGrid()}
+function selectRange(a,b){const n=episodes.length,s=a>0?a-1:n+a,e=b>0?b:n+b;for(let i=s;i<=e;i++)selectedEps.add(i+1);renderEpGrid()}
+
+function pickTarget(t){
+  downloadTarget=t;
+  document.getElementById('pickLocal').classList.toggle('picked',t==='local');
+  document.getElementById('pickCloud').classList.toggle('picked',t==='cloud');
+}
+pickTarget('local');
+
+async function startDownload(){
+  if(!currentSeriesId){alert('请先解析');return}
+  const eps=[...selectedEps];if(!eps.length){alert('请选择集数');return}
+  if(downloadTarget==='cloud'&&!cloudHost){alert('请先在设置中配置NAS地址');return}
+  document.getElementById('progressCard').classList.remove('hidden');
+
+  if(downloadTarget==='cloud'){
+    // 云端：通过 NAS API 提交任务
+    try{
+      const base=`http://${cloudHost}:${cloudPort}`;
+      const r=await fetch(`${base}/api/download`,{
+        method:'POST',headers:{'Content-Type':'application/json','X-Auth-Token':cloudPwd},
+        body:JSON.stringify({series_id:currentSeriesId,episodes:eps})
+      });
+      const j=await r.json();
+      document.getElementById('progressText').textContent=j.msg||'已提交到NAS';
+    }catch(e){alert('云端请求失败: '+e.message)}
+    return;
+  }
+
+  // 本地：下载到手机
+  const dramaDir=downloadDir+'/'+currentSeriesId;
+  AndroidBridge.runCommand('mkdir -p '+dramaDir,'mkdir');
+  let done=0;failedEps=[];
+  for(const idx of eps){
+    document.getElementById('progressText').textContent=`下载中 ${done+1}/${eps.length} (第${idx}集)`;
+    document.getElementById('progressFill').style.width=Math.round(done/eps.length*100)+'%';
+    try{
+      const ep=episodes.find(e=>e.vid_index===idx);
+      const {video_url}=await fetchPlayUrl(ep.vid);
+      const outPath=dramaDir+'/'+String(idx).padStart(3,'0')+'_第'+idx+'集.mp4.enc';
+      AndroidBridge.downloadFile(video_url,outPath);
+      await new Promise(r=>setTimeout(r,800));
+    }catch(e){failedEps.push(idx);renderErrors();}
+    done++;
+  }
+  document.getElementById('progressText').textContent='完成';
+  document.getElementById('progressFill').style.width='100%';
+  renderErrors();
+}
+
+function renderErrors(){
+  const el=document.getElementById('errorList');
+  if(!failedEps.length){el.innerHTML='';return}
+  el.innerHTML=failedEps.map(e=>'<div class="error-box">❌ 第'+e+'集 下载失败</div>').join('')+
+    '<button class="sm" style="margin-top:8px;background:var(--orange)" onclick="retryFailed()">🔄 重试失败集数 ('+failedEps.length+')</button>';
+}
+
+async function retryFailed(){
+  if(!failedEps.length)return;
+  const eps=[...failedEps];
+  failedEps=[];
+  document.getElementById('errorList').innerHTML='';
+  const dramaDir=downloadDir+'/'+currentSeriesId;
+  for(const idx of eps){
+    document.getElementById('progressText').textContent=`重试中... (第${idx}集)`;
+    try{
+      const ep=episodes.find(e=>e.vid_index===idx);
+      const {video_url}=await fetchPlayUrl(ep.vid);
+      const outPath=dramaDir+'/'+String(idx).padStart(3,'0')+'_第'+idx+'集.mp4.enc';
+      AndroidBridge.downloadFile(video_url,outPath);
+      await new Promise(r=>setTimeout(r,800));
+    }catch(e){failedEps.push(idx);}
+  }
+  renderErrors();
+}
+
+function showSettings(){document.getElementById('settingsPanel').classList.add('show')}
+function closeSettings(){document.getElementById('settingsPanel').classList.remove('show')}
+
+function onSettingsLoaded(host,port,pwd){
+  cloudHost=host||'';cloudPort=port||'8800';cloudPwd=pwd||'';
+  document.getElementById('setHost').value=cloudHost;
+  document.getElementById('setPort').value=cloudPort;
+  document.getElementById('setPwd').value=cloudPwd;
+}
+
+function saveSettings(){
+  AndroidBridge.saveSettings(
+    document.getElementById('setHost').value.trim(),
+    document.getElementById('setPort').value.trim(),
+    document.getElementById('setPwd').value
+  );
+  closeSettings();
+}
+
+function onSharedText(text){
+  // 从分享文本中提取链接
+  const m=text.match(/https?:\/\/[^\s，。]+/);
+  if(m){
+    document.getElementById('urlInput').value=m[0];
+    parseDrama();
+  }else{
+    AndroidBridge.toast('未在分享中找到链接');
+  }
+}
+
+if(window.AndroidBridge)downloadDir=AndroidBridge.getDownloadDir();
+</script>
+</body>
+</html>
