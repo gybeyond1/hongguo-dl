@@ -26,6 +26,7 @@ import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
 
+    private static final String UA = "Mozilla/5.0 (Linux; Android 9; SM-N9860) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
     private WebView webView;
     private SharedPreferences prefs;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -44,6 +45,8 @@ public class MainActivity extends Activity {
         s.setDomStorageEnabled(true);
         s.setAllowFileAccess(true);
         s.setAllowContentAccess(true);
+        s.setAllowUniversalAccessFromFileURLs(true);
+        s.setAllowFileAccessFromFileURLs(true);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         s.setMediaPlaybackRequiresUserGesture(false);
 
@@ -196,6 +199,40 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void toast(String msg) {
             runOnUiThread(() -> Toast.makeText(MainActivity.this, msg, Toast.LENGTH_SHORT).show());
+        }
+
+        @JavascriptInterface
+        public void httpRequest(String url, String method, String body, String callbackId) {
+            executor.execute(() -> {
+                try {
+                    HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+                    conn.setRequestMethod(method);
+                    conn.setRequestProperty("User-Agent", UA);
+                    conn.setRequestProperty("Referer", "https://novelquickapp.com/");
+                    conn.setRequestProperty("Content-Type", "application/json");
+                    conn.setConnectTimeout(15000);
+                    conn.setReadTimeout(30000);
+                    if ("POST".equals(method) && body != null && !body.isEmpty()) {
+                        conn.setDoOutput(true);
+                        conn.getOutputStream().write(body.getBytes("UTF-8"));
+                    }
+                    int code = conn.getResponseCode();
+                    InputStream is = (code >= 200 && code < 400) ? conn.getInputStream() : conn.getErrorStream();
+                    StringBuilder sb = new StringBuilder();
+                    byte[] buf = new byte[4096];
+                    int n;
+                    while ((n = is.read(buf)) != -1) sb.append(new String(buf, 0, n, "UTF-8"));
+                    String resp = sb.toString();
+                    conn.disconnect();
+                    String escaped = resp.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "");
+                    runOnUiThread(() -> webView.evaluateJavascript(
+                        "window.onHttpResponse && onHttpResponse('" + callbackId + "'," + code + ",'" + escaped + "')", null));
+                } catch (Exception e) {
+                    String msg = e.getMessage().replace("\\", "\\\\").replace("'", "\\'");
+                    runOnUiThread(() -> webView.evaluateJavascript(
+                        "window.onHttpError && onHttpError('" + callbackId + "','" + msg + "')", null));
+                }
+            });
         }
     }
 }
