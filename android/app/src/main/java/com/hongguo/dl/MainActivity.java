@@ -341,7 +341,27 @@ public class MainActivity extends Activity {
         public String getFfmpegPath() {
             try {
                 String nativeDir = getApplicationInfo().nativeLibraryDir;
-                File ffmpeg = new File(nativeDir, "libffmpeg.so");
+                File binDir = new File(getFilesDir(), "bin");
+                binDir.mkdirs();
+                File ffmpeg = new File(binDir, "ffmpeg");
+                // Copy ffmpeg
+                File srcFf = new File(nativeDir, "libffmpeg.so");
+                if (srcFf.exists()) {
+                    copyFile(srcFf, ffmpeg);
+                    ffmpeg.setExecutable(true, false);
+                }
+                // Copy all .so files
+                File libDir = new File(binDir, "lib");
+                libDir.mkdirs();
+                String[] needed = {"libavcodec","libavdevice","libavfilter","libavformat","libavutil","libswresample","libswscale"};
+                for (String lib : needed) {
+                    File src = new File(nativeDir, lib + ".so");
+                    if (src.exists()) {
+                        File dst = new File(libDir, lib + ".so");
+                        copyFile(src, dst);
+                        dst.setExecutable(true, false);
+                    }
+                }
                 return ffmpeg.exists() ? ffmpeg.getAbsolutePath() : "";
             } catch (Exception e) { return ""; }
         }
@@ -428,12 +448,12 @@ public class MainActivity extends Activity {
                     FileOutputStream lfos = new FileOutputStream(listFile);
                     lfos.write(list.toString().getBytes());
                     lfos.close();
-                    String nativeDir = getApplicationInfo().nativeLibraryDir;
+                    String libDir = new File(getFilesDir(), "bin/lib").getAbsolutePath();
                     ProcessBuilder pb = new ProcessBuilder(
                         ffmpeg, "-y", "-f", "concat", "-safe", "0",
                         "-i", listFile.getAbsolutePath(),
                         "-c", "copy", outPath);
-                    pb.environment().put("LD_LIBRARY_PATH", nativeDir);
+                    pb.environment().put("LD_LIBRARY_PATH", libDir);
                     pb.redirectErrorStream(true);
                     Process p = pb.start();
                     BufferedReader br = new BufferedReader(new InputStreamReader(p.getInputStream()));

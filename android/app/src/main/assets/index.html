@@ -352,15 +352,14 @@ function onSettingsLoaded(host,port,pwd){
 }
 
 function testConnection(){
-  const host=document.getElementById('setHost').value.trim();
+  const host=document.getElementById('setHost').value.trim().replace(/\/$/,'');
   const pwd=document.getElementById('setPwd').value;
   if(!host){AndroidBridge.toast('请先填写地址');return}
   AndroidBridge.toast('正在测试...');
   const rid='cb'+(++httpCallbackId);
   httpCallbacks[rid]={
     resolve:(r)=>{
-      try{const j=JSON.parse(r);AndroidBridge.toast(j.code===0?'连接成功':'连接失败: '+j.msg)}
-      catch(e){AndroidBridge.toast('连接失败: 响应格式错误')}
+      AndroidBridge.toast('响应: '+r.slice(0,80));
     },
     reject:(e)=>AndroidBridge.toast('连接失败: '+e)
   };
