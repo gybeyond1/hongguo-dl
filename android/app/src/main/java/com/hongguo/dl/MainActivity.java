@@ -561,7 +561,9 @@ public class MainActivity extends Activity {
                     conn.setRequestMethod(method);
                     conn.setRequestProperty("User-Agent", UA);
                     conn.setRequestProperty("Referer", "https://novelquickapp.com/");
-                    conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                    if (!"GET".equals(method)) {
+                        conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                    }
                     conn.setRequestProperty("Accept", "application/json; charset=utf-8,application/x-protobuf");
                     conn.setRequestProperty("Accept-Encoding", "identity");
                     if (!authToken.isEmpty() && !url.contains("fqnovel.com")) {
