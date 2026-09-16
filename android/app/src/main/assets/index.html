@@ -368,7 +368,19 @@ function mergeDrama(id,source){
     }
     return;
   }
-  AndroidBridge.toast('本地合并需NAS，请在设置配置NAS');
+  // Local merge: use bundled ffmpeg
+  const ffmpegPath = AndroidBridge.getFfmpegPath();
+  if(!ffmpegPath){
+    if(!confirm('首次合并需要解压内置FFmpeg，是否继续？'))return;
+    AndroidBridge.downloadFfmpeg('dlff');
+    AndroidBridge.toast('正在解压FFmpeg...');
+    return;
+  }
+  if(!confirm('确认合并本地已下载的剧集？'))return;
+  const dramaDir = AndroidBridge.getDownloadDir()+ '/'+id;
+  const outPath = AndroidBridge.getDownloadDir()+ '/'+id+'.mp4';
+  AndroidBridge.mergeVideos(dramaDir, outPath, 'mg'+Date.now());
+  AndroidBridge.toast('本地合并中...');
 }
 </script>
 </body>
