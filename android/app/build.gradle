@@ -14,6 +14,20 @@ android {
         versionName "1.0"
     }
 
+    flavorDimensions "version"
+    productFlavors {
+        full {
+            dimension "version"
+            applicationId "com.hongguo.dl"
+            resValue "string", "app_name", "红果下载器-全端"
+        }
+        nas {
+            dimension "version"
+            applicationId "com.hongguo.dl.nas"
+            resValue "string", "app_name", "红果下载器-NAS"
+        }
+    }
+
     signingConfigs {
         release {
             storeFile file('../hongguo.keystore')
