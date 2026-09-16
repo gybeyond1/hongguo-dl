@@ -308,7 +308,6 @@ async function startDownload(){
       const id='cb'+(++httpCallbackId);
       httpCallbacks[id]={resolve:()=>{},reject:()=>{}};
       AndroidBridge.httpRequest(`${cloudHost}/api/download`,'POST',JSON.stringify({series_id:currentSeriesId,episodes:eps}),id);
-      // Save meta to local
       AndroidBridge.writeFile(downloadDir+'/'+currentSeriesId+'/.meta.json',JSON.stringify({source:'cloud',title:currentTitle,cover:currentCover}));
       AndroidBridge.toast('已提交到NAS');
       document.getElementById('progressText').textContent='已提交到NAS处理';
@@ -321,6 +320,10 @@ async function startDownload(){
   const dramaDir=downloadDir+'/'+safeTitle;
   AndroidBridge.runCommand('mkdir -p '+dramaDir,'mkdir');
   AndroidBridge.writeFile(dramaDir+'/.meta.json',JSON.stringify({source:'local',title:currentTitle,cover:currentCover,id:currentSeriesId}));
+  await downloadEps(eps,dramaDir);
+}
+
+async function downloadEps(eps,dramaDir){
   let done=0,failed=[];
   for(const idx of eps){
     document.getElementById('progressText').textContent=`获取播放地址 ${done+1}/${eps.length} (第${idx}集)`;
@@ -328,7 +331,6 @@ async function startDownload(){
     try{
       const ep=episodes.find(e=>e.vid_index===idx);
       const r=await apiCall('/novel/player/multi_video_model/preload/v1',{biz_param:MODEL_BIZ_PARAM,dr_scene:"preload",mixed_video_id_map:{1004:[ep.vid]}});
-      dbg('model resp: '+(r.text||'').slice(0,200));
       const j=await r.json();
       if(j.code!==0)throw new Error(j.message||'API错误');
       const item=j.data[ep.vid]||{};
@@ -374,7 +376,10 @@ async function startDownload(){
 
 function retryEp(idx){
   AndroidBridge.toast('重试第'+idx+'集...');
-  startDownload();
+  document.getElementById('errorList').innerHTML='';
+  const safeTitle=(currentTitle||currentSeriesId).replace(/[\\/:*?"<>|]/g,'_');
+  const dramaDir=downloadDir+'/'+safeTitle;
+  downloadEps([idx],dramaDir);
 }
 
 function showSettings(){document.getElementById('settingsPanel').classList.add('show')}
