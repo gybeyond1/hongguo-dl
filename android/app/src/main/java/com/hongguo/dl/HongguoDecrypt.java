@@ -44,35 +44,38 @@ public class HongguoDecrypt {
 
     static byte[] deriveKey(String spadeA) {
         if (spadeA == null || spadeA.isEmpty()) return null;
-        byte[] buf = avBase64Decode(spadeA);
-        int L = buf.length;
-        if (L < 3) return null;
-        int key0 = (buf[0] & 0xff) ^ (buf[1] & 0xff) ^ (buf[2] & 0xff);
-        int x27 = key0 - 0x30;
-        int w22 = L - key0 + 0x2f;
-        if (x27 < 2 || w22 < 2 || w22 > L - 1) return null;
-        byte[] x21 = Arrays.copyOfRange(buf, 1, 1 + w22);
-        int w11 = 0x55, w12 = 0xfa, w10 = 0xeb;
-        for (int i = 0; i < x21.length; i++) {
-            int w13 = x21[i] & 0xff;
-            int pc = Integer.bitCount(i);
-            int w14 = (i & 1) == 0 ? w12 : w11;
-            if ((i & 1) == 1) w11 = w13;
-            else w12 = w13;
-            int w13xor = w14 ^ w13;
-            int w14sub = w10 - pc;
-            x21[i] = (byte) ((w14sub + w13xor) & 0xff);
-        }
-        int c0 = x21[0] & 0xff;
-        int hval;
-        if (c0 >= 0x30 && c0 <= 0x39) hval = c0 - 0x30;
-        else if (c0 >= 0x61 && c0 <= 0x7a) hval = c0 - 0x57;
-        else return null;
-        int w9 = w22 - hval;
-        if (w9 < 2) return null;
-        String strA = new String(x21, 1, w9 - 1);
-        if (strA.length() != 32) return null;
         try {
+            // Use standard Base64 (with padding)
+            String padded = spadeA;
+            while (padded.length() % 4 != 0) padded += "=";
+            byte[] buf = java.util.Base64.getDecoder().decode(padded);
+            int L = buf.length;
+            if (L < 3) return null;
+            int key0 = (buf[0] & 0xff) ^ (buf[1] & 0xff) ^ (buf[2] & 0xff);
+            int x27 = key0 - 0x30;
+            int w22 = L - key0 + 0x2f;
+            if (x27 < 2 || w22 < 2 || w22 > L - 1) return null;
+            byte[] x21 = Arrays.copyOfRange(buf, 1, 1 + w22);
+            int w11 = 0x55, w12 = 0xfa, w10 = 0xeb;
+            for (int i = 0; i < x21.length; i++) {
+                int w13 = x21[i] & 0xff;
+                int pc = Integer.bitCount(i);
+                int w14 = (i & 1) == 0 ? w12 : w11;
+                if ((i & 1) == 1) w11 = w13;
+                else w12 = w13;
+                int w13xor = w14 ^ w13;
+                int w14sub = w10 - pc;
+                x21[i] = (byte) ((w14sub + w13xor) & 0xff);
+            }
+            int c0 = x21[0] & 0xff;
+            int hval;
+            if (c0 >= 0x30 && c0 <= 0x39) hval = c0 - 0x30;
+            else if (c0 >= 0x61 && c0 <= 0x7a) hval = c0 - 0x57;
+            else return null;
+            int w9 = w22 - hval;
+            if (w9 < 2) return null;
+            String strA = new String(x21, 1, w9 - 1);
+            if (strA.length() != 32) return null;
             return hexDecode(strA);
         } catch (Exception e) { return null; }
     }
