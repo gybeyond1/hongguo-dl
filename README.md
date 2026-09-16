@@ -16,6 +16,8 @@
 
 ## Docker 部署
 
+### 方式一：直接拉取镜像
+
 ```bash
 mkdir -p /volume1/gy/hongguo-downloads
 cd /volume1/docker/hg
@@ -42,11 +44,23 @@ services:
 docker compose up -d
 ```
 
+### 方式二：离线导入镜像（Docker Hub 拉不下来时）
+
+从 [Releases](../../releases) 下载 `hongguo-dl-docker.tar.gz`，然后：
+
+```bash
+# 导入镜像
+docker load < hongguo-dl-docker.tar.gz
+
+# 启动
+docker compose up -d
+```
+
 访问 `http://NAS_IP:8800`，输入密码即可使用。
 
 ## Android APK
 
-从 [Releases](../../releases) 页面下载 `app-debug.apk`，安装后：
+从 [Releases](../../releases) 下载 `hongguo-dl.apk`，安装后：
 
 - **本地模式**：直接在手机上解析和下载到 `/Download/HG_Download/`
 - **云端模式**：在设置里填入 NAS 地址和密码，远程下载
