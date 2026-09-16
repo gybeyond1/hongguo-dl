@@ -345,10 +345,14 @@ public class MainActivity extends Activity {
                 File libDir = new File(binDir, "lib");
                 binDir.mkdirs(); libDir.mkdirs();
                 File ffmpeg = new File(binDir, "ffmpeg");
-                if (!ffmpeg.exists() || ffmpeg.length() < 100000) {
-                    // Copy from jniLibs
-                    copyFile(new File(nativeDir, "libffmpeg.so"), ffmpeg);
-                    Runtime.getRuntime().exec(new String[]{"chmod", "755", ffmpeg.getAbsolutePath()}).waitFor();
+                // Always force re-extract to fix permission issues
+                if (binDir.exists()) {
+                    deleteDir(binDir);
+                }
+                binDir.mkdirs(); libDir.mkdirs();
+                // Copy from jniLibs
+                copyFile(new File(nativeDir, "libffmpeg.so"), ffmpeg);
+                Runtime.getRuntime().exec(new String[]{"chmod", "755", ffmpeg.getAbsolutePath()}).waitFor();
                     // Copy all .so files
                     String[] needed = {"libavcodec","libavdevice","libavfilter","libavformat","libavutil","libswresample","libswscale"};
                     for (String lib : needed) {
@@ -364,9 +368,16 @@ public class MainActivity extends Activity {
                             }
                         }
                     }
-                }
                 return ffmpeg.exists() ? ffmpeg.getAbsolutePath() : "";
             } catch (Exception e) { return ""; }
+        }
+
+        private void deleteDir(File dir) {
+            if (dir.isDirectory()) {
+                File[] kids = dir.listFiles();
+                if (kids != null) for (File k : kids) deleteDir(k);
+            }
+            dir.delete();
         }
 
         private void copyFile(File src, File dst) throws Exception {
