@@ -472,23 +472,12 @@ window.onFfmpegDownloaded=(path)=>{AndroidBridge.toast('ffmpeg下载完成');};
 window.onFfmpegError=(msg)=>{AndroidBridge.toast('ffmpeg下载失败: '+msg);};
 
 function mergeDrama(id,source){
-  if(source==='cloud'){
-    if(!cloudHost){AndroidBridge.toast('请先配置NAS');return}
-    if(confirm('确认提交到NAS合并？')){
-      AndroidBridge.toast('正在提交NAS合并...');
-      const rid='cb'+(++httpCallbackId);
-      httpCallbacks[rid]={resolve:()=>{AndroidBridge.toast('合并任务已提交');},reject:()=>{}};
-      AndroidBridge.httpRequest(`${cloudHost}/api/merge`,'POST',JSON.stringify({drama:id}),rid);
-    }
-    return;
-  }
-  if(!confirm('确认合并本地已下载的剧集？'))return;
-  const dramaDir = AndroidBridge.getDownloadDir()+ '/'+id;
-  const outPath = dramaDir + '/_merged_full.mp4';
-  dbg('dramaDir='+dramaDir);
-  dbg('outPath='+outPath);
-  AndroidBridge.mergeVideos(dramaDir, outPath, 'mg'+Date.now());
-  AndroidBridge.toast('本地合并中...');
+  if(!cloudHost){AndroidBridge.toast('请先配置NAS地址');return}
+  if(!confirm('确认提交到NAS合并？'))return;
+  AndroidBridge.toast('正在提交NAS合并...');
+  const rid='cb'+(++httpCallbackId);
+  httpCallbacks[rid]={resolve:()=>{AndroidBridge.toast('合并任务已提交');},reject:()=>{}};
+  AndroidBridge.httpRequest(`${cloudHost}/api/merge`,'POST',JSON.stringify({drama:id}),rid);
 }
 </script>
 </body>
