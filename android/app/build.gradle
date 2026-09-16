@@ -14,8 +14,21 @@ android {
         versionName "1.0"
     }
 
-    buildTypes {
+    signingConfigs {
         release {
+            storeFile file('../hongguo.keystore')
+            storePassword 'hongguo1997'
+            keyAlias 'hongguo'
+            keyPassword 'hongguo1997'
+        }
+    }
+
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.release
+        }
+        release {
+            signingConfig signingConfigs.release
             minifyEnabled false
         }
     }
