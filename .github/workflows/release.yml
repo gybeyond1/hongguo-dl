@@ -37,8 +37,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release delete v1.0 --yes 2>/dev/null || true
-          git tag -d v1.0 2>/dev/null || true
-          git push origin :refs/tags/v1.0 2>/dev/null || true
 
       - name: Create release v1.0
         env:
@@ -47,5 +45,6 @@ jobs:
           gh release create v1.0 \
             --title "红果短剧下载器 v1.0" \
             --notes "红果短剧下载器，支持 Docker NAS 部署和 Android APK。" \
+            --target main \
             android/app/build/outputs/apk/debug/app-debug.apk \
             docker-compose.yml
