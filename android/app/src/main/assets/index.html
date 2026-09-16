@@ -399,7 +399,12 @@ function testConnection(){
     resolve:(r)=>{
       try{
         const j=JSON.parse(r.text);
-        if(j.code===0){AndroidBridge.toast('连接成功，NAS上有'+(j.data?j.data.length:0)+'部剧')}
+        if(j.code===0){
+          AndroidBridge.toast('连接成功，NAS上有'+(j.data?j.data.length:0)+'部剧');
+          cloudHost=host;cloudPwd=pwd;
+          AndroidBridge.saveSettings(cloudHost,'',cloudPwd);
+          showDownloaded();
+        }
         else if(j.code===-1){AndroidBridge.toast('连接成功但密钥错误')}
         else{AndroidBridge.toast('响应: '+r.text.slice(0,80))}
       }catch(e){AndroidBridge.toast('响应: '+r.text.slice(0,80))}
