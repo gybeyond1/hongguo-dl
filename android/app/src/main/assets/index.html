@@ -324,6 +324,7 @@ async function startDownload(){
     try{
       const ep=episodes.find(e=>e.vid_index===idx);
       const r=await apiCall('/novel/player/multi_video_model/preload/v1',{biz_param:MODEL_BIZ_PARAM,dr_scene:"preload",mixed_video_id_map:{1004:[ep.vid]}});
+      dbg('model resp: '+(r.text||'').slice(0,200));
       const j=await r.json();
       if(j.code!==0)throw new Error(j.message||'API错误');
       const item=j.data[ep.vid]||{};
@@ -354,7 +355,7 @@ async function startDownload(){
         }
         setTimeout(()=>{if(fileCallbacks[fid]){fileCallbacks[fid].res();delete fileCallbacks[fid]}},120000);
       });
-    }catch(e){failed.push({ep:idx,err:e.message})}
+    }catch(e){dbg('download ep '+idx+' error: '+e.message);failed.push({ep:idx,err:e.message})}
     done++;
   }
   document.getElementById('progressText').textContent=failed.length?`完成，${failed.length}个失败`:'全部完成';
