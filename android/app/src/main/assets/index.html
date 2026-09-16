@@ -107,6 +107,7 @@ const MODEL_BIZ_PARAM={detail_page_version:0,device_level:3,disable_digg_stat:fa
 let episodes=[],currentSeriesId='',selectedEps=new Set(),downloadDir='/sdcard/Download/HG_Download';
 let cloudHost='',cloudPort='8800',cloudPwd='',downloadTarget='local';
 let httpCallbackId=0,httpCallbacks={};
+let fileDlId=0,fileCallbacks={};
 
 function buildUrl(path){
   const q=new URLSearchParams(COMMON_Q);
@@ -138,6 +139,12 @@ window.onHttpResponse=(id,code,finalUrl,body)=>{
 };
 window.onHttpError=(id,msg)=>{
   if(httpCallbacks[id]){httpCallbacks[id].reject(new Error(msg));delete httpCallbacks[id]}
+};
+window.onFileDownloaded=(path)=>{
+  for(const fid in fileCallbacks){if(fileCallbacks[fid].path===path){fileCallbacks[fid].res();delete fileCallbacks[fid]}}
+};
+window.onFileError=(msg)=>{
+  for(const fid in fileCallbacks){fileCallbacks[fid].rej(new Error(msg));delete fileCallbacks[fid]}
 };
 
 async function resolveSeriesId(url){
@@ -230,23 +237,42 @@ async function startDownload(){
   AndroidBridge.runCommand('mkdir -p '+dramaDir,'mkdir');
   let done=0,failed=[];
   for(const idx of eps){
-    document.getElementById('progressText').textContent=`下载中 ${done+1}/${eps.length} (第${idx}集)`;
+    document.getElementById('progressText').textContent=`获取播放地址 ${done+1}/${eps.length} (第${idx}集)`;
     document.getElementById('progressFill').style.width=Math.round(done/eps.length*100)+'%';
     try{
       const ep=episodes.find(e=>e.vid_index===idx);
-      const r=await apiCall('/novel/player/multi_video_model/preload/v1',{biz_param:MODEL_BIZ_PARAM,dr_scene:"preload",series_id:currentSeriesId,mixed_video_id_map:{1024:[ep.vid]}});
+      const r=await apiCall('/novel/player/multi_video_model/preload/v1',{biz_param:MODEL_BIZ_PARAM,dr_scene:"preload",mixed_video_id_map:{1004:[ep.vid]}});
       const j=await r.json();
-      const vi=j.data.video_infos[1024][0];
-      const url=vi.play_url;
+      if(j.code!==0)throw new Error(j.message||'API错误');
+      const item=j.data[ep.vid]||{};
+      let vm=item.video_model;
+      if(typeof vm==='string')vm=JSON.parse(vm);
+      const vl=vm.video_list||[];
+      let best=null,bestScore=-1;
+      for(const v of vl){
+        const meta=v.video_meta||{};
+        const defn=String(meta.definition||'');
+        const dm=defn.match(/(\d+)/);
+        const p=dm?parseInt(dm[1]):0;
+        const w=parseInt(meta.vwidth||0),h=parseInt(meta.vheight||0),br=parseInt(meta.bitrate||0);
+        const score=p*1000000+w*h+br;
+        if(score>bestScore){bestScore=score;best=v.main_url;}
+      }
+      if(!best)throw new Error('无播放地址');
       const outPath=dramaDir+'/'+String(idx).padStart(3,'0')+'_第'+idx+'集.mp4';
-      AndroidBridge.downloadFile(url,outPath);
-      await new Promise(r2=>setTimeout(r2,1500));
-    }catch(e){failed.push(idx)}
+      document.getElementById('progressText').textContent=`下载 ${done+1}/${eps.length} (第${idx}集)`;
+      await new Promise((res,rej)=>{
+        const fid='fd'+(++fileDlId);
+        fileCallbacks[fid]={res,rej,path:outPath};
+        AndroidBridge.downloadFile(best,outPath+'|'+fid);
+        setTimeout(()=>{if(fileCallbacks[fid]){fileCallbacks[fid].res();delete fileCallbacks[fid]}},60000);
+      });
+    }catch(e){failed.push({ep:idx,err:e.message})}
     done++;
   }
   document.getElementById('progressText').textContent=failed.length?`完成，${failed.length}个失败`:'全部完成';
   document.getElementById('progressFill').style.width='100%';
-  if(failed.length)document.getElementById('errorList').innerHTML=failed.map(e=>'<div class="error-box">❌ 第'+e+'集</div>').join('');
+  if(failed.length)document.getElementById('errorList').innerHTML=failed.map(f=>'<div class="error-box">❌ 第'+f.ep+'集: '+f.err+'</div>').join('');
 }
 
 function showSettings(){document.getElementById('settingsPanel').classList.add('show')}
