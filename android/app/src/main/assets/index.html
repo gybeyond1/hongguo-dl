@@ -198,7 +198,15 @@ async function resolveSeriesId(url){
   if(m2){
     try{
       const raw=decodeURIComponent(decodeURIComponent(m2[0]));
-      const jm=raw.match(/"video_id"\s*:\s*"(\d+)"/);
+      dbg('schemeParams raw: '+raw.slice(0,200));
+      // For regular dramas, use video_series_id
+      let jm=raw.match(/"video_series_id"\s*:\s*"(\d+)"/);
+      if(jm)return jm[1];
+      // For motion comics, use vid
+      jm=raw.match(/"vid"\s*:\s*"(\d+)"/);
+      if(jm)return jm[1];
+      // Fallback to video_id
+      jm=raw.match(/"video_id"\s*:\s*"(\d+)"/);
       if(jm)return jm[1];
     }catch(e){}
   }
