@@ -349,7 +349,9 @@ public class MainActivity extends Activity {
                 File srcFf = new File(nativeDir, "libffmpeg.so");
                 if (!srcFf.exists()) return "";
                 copyFile(srcFf, ffmpeg);
-                Runtime.getRuntime().exec(new String[]{"chmod", "755", ffmpeg.getAbsolutePath()}).waitFor();
+                ffmpeg.setReadable(true, false);
+                ffmpeg.setWritable(true, false);
+                ffmpeg.setExecutable(true, false);
                 // Copy all .so files
                 String[] needed = {"libavcodec","libavdevice","libavfilter","libavformat","libavutil","libswresample","libswscale"};
                 for (String lib : needed) {
@@ -357,7 +359,8 @@ public class MainActivity extends Activity {
                     if (src.exists()) {
                         File dst = new File(libDir, lib + ".so");
                         copyFile(src, dst);
-                        Runtime.getRuntime().exec(new String[]{"chmod", "755", dst.getAbsolutePath()}).waitFor();
+                        dst.setReadable(true, false);
+                        dst.setExecutable(true, false);
                     }
                 }
                 return ffmpeg.getAbsolutePath();
