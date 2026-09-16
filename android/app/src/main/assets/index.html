@@ -295,14 +295,15 @@ function onSettingsLoaded(host,port,pwd){
   document.getElementById('setHost').value=cloudHost;
   document.getElementById('setPort').value=cloudPort;
   document.getElementById('setPwd').value=cloudPwd;
+  if(cloudPwd&&window.AndroidBridge)AndroidBridge.setAuthToken(cloudPwd);
 }
 
 function saveSettings(){
-  AndroidBridge.saveSettings(
-    document.getElementById('setHost').value.trim(),
-    document.getElementById('setPort').value.trim(),
-    document.getElementById('setPwd').value
-  );
+  cloudHost=document.getElementById('setHost').value.trim();
+  cloudPort=document.getElementById('setPort').value.trim();
+  cloudPwd=document.getElementById('setPwd').value;
+  AndroidBridge.saveSettings(cloudHost,cloudPort,cloudPwd);
+  if(cloudPwd)AndroidBridge.setAuthToken(cloudPwd);
   closeSettings();
 }
 
@@ -354,14 +355,11 @@ window.onMergeDone=(cid,code,msg)=>{
 };
 
 function mergeDrama(id,source){
-  if(source==='cloud'||cloudHost){
-    AndroidBridge.toast('正在提交NAS合并...');
-    const rid='cb'+(++httpCallbackId);
-    httpCallbacks[rid]={resolve:()=>{},reject:()=>{}};
-    AndroidBridge.httpRequest(`http://${cloudHost}:${cloudPort}/api/merge`,'POST',JSON.stringify({series_id:id}),rid);
-    return;
-  }
-  AndroidBridge.toast('手机没有ffmpeg，请先在设置配置NAS地址');
+  if(!cloudHost){AndroidBridge.toast('请先在设置(⚙️)配置NAS地址');return}
+  AndroidBridge.toast('正在提交NAS合并...');
+  const rid='cb'+(++httpCallbackId);
+  httpCallbacks[rid]={resolve:()=>{AndroidBridge.toast('合并任务已提交');},reject:()=>{}};
+  AndroidBridge.httpRequest(`http://${cloudHost}:${cloudPort}/api/merge`,'POST',JSON.stringify({drama:id}),rid);
 }
 </script>
 </body>
