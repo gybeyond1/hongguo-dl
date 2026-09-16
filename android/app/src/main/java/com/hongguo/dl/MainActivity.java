@@ -30,6 +30,8 @@ public class MainActivity extends Activity {
     private static final String UA = "com.phoenix.read/71532 (Linux; U; Android 9; SM-N9860; Build/PQ3A.190705.10241111;tt-ok/3.12.13.20)";
     private WebView webView;
     private SharedPreferences prefs;
+    private volatile String authToken = "";
+    private SharedPreferences prefs;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private String pendingShareText = null;
 
@@ -234,6 +236,11 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public void setAuthToken(String token) {
+            authToken = token;
+        }
+
+        @JavascriptInterface
         public String runCommandSync(String cmd) {
             try {
                 Process p = Runtime.getRuntime().exec(new String[]{"sh", "-c", cmd});
@@ -312,6 +319,9 @@ public class MainActivity extends Activity {
                     conn.setRequestProperty("Referer", "https://novelquickapp.com/");
                     conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
                     conn.setRequestProperty("Accept", "application/json; charset=utf-8,application/x-protobuf");
+                    if (!authToken.isEmpty() && !url.contains("fqnovel.com")) {
+                        conn.setRequestProperty("X-Auth-Token", authToken);
+                    }
                     conn.setConnectTimeout(15000);
                     conn.setReadTimeout(30000);
                     conn.setInstanceFollowRedirects(true);
