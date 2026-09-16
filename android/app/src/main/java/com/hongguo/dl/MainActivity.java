@@ -185,6 +185,49 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public void downloadDecryptFile(String url, String spadeA, String pathAndCid) {
+            executor.execute(() -> {
+                String path = pathAndCid;
+                String cid = "";
+                int idx = pathAndCid.lastIndexOf("|");
+                if (idx > 0) {
+                    path = pathAndCid.substring(0, idx);
+                    cid = pathAndCid.substring(idx + 1);
+                }
+                try {
+                    File outFile = new File(path);
+                    outFile.getParentFile().mkdirs();
+                    // Download to temp
+                    File tmpFile = new File(getCacheDir(), "enc_" + System.currentTimeMillis() + ".mp4");
+                    HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+                    conn.setRequestProperty("User-Agent", UA);
+                    conn.setRequestProperty("Referer", "https://novelquickapp.com/");
+                    conn.setConnectTimeout(15000);
+                    conn.setReadTimeout(120000);
+                    conn.connect();
+                    InputStream is = conn.getInputStream();
+                    FileOutputStream fos = new FileOutputStream(tmpFile);
+                    byte[] buf = new byte[8192];
+                    int n;
+                    while ((n = is.read(buf)) != -1) fos.write(buf, 0, n);
+                    fos.close(); is.close(); conn.disconnect();
+                    // Decrypt
+                    byte[] key = HongguoDecrypt.deriveKey(spadeA);
+                    if (key == null) throw new Exception("无法解密：密钥派生失败");
+                    HongguoDecrypt.decryptMp4File(tmpFile.getAbsolutePath(), path, key);
+                    tmpFile.delete();
+                    final String fpath = path;
+                    runOnUiThread(() -> webView.evaluateJavascript(
+                        "window.onFileDownloaded && onFileDownloaded('" + fpath + "')", null));
+                } catch (Exception e) {
+                    final String msg = e.getMessage().replace("\\", "\\\\").replace("'", "\\'");
+                    runOnUiThread(() -> webView.evaluateJavascript(
+                        "window.onFileError && onFileError('" + msg + "')", null));
+                }
+            });
+        }
+
+        @JavascriptInterface
         public void runCommand(String cmd, String callbackId) {
             executor.execute(() -> {
                 try {

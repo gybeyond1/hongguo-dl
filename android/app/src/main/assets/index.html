@@ -30,7 +30,7 @@ button.sm{padding:5px 10px;font-size:12px;border-radius:6px}
 .mode-pick{display:flex;gap:8px;margin:10px 0}
 .mode-pick button{flex:1;padding:12px;border-radius:8px;border:2px solid var(--border);background:var(--input);color:var(--text);font-size:13px}
 .mode-pick button.picked{border-color:var(--accent);background:rgba(233,69,96,.15);color:var(--accent)}
-.error-box{color:var(--red);padding:5px 8px;background:rgba(192,57,43,.1);border-radius:6px;margin:4px 0;font-size:11px}
+.error-box{color:var(--red);padding:5px 8px;background:rgba(192,57,43,.1);border-radius:6px;margin:4px 0;font-size:11px;word-break:break-all;overflow-wrap:break-word}
 .progress-bar{background:var(--input);border-radius:4px;height:6px;margin-top:6px;overflow:hidden}
 .progress-fill{background:linear-gradient(90deg,var(--accent),#ff6b9d);height:100%;transition:width .3s}
 .settings-panel{position:fixed;inset:0;background:rgba(15,15,26,.97);z-index:200;display:none;align-items:center;justify-content:center}
@@ -193,8 +193,8 @@ async function parseDrama(){
     episodes=vl.map((v,i)=>({vid_index:i+1,vid:String(v.vid)}));
     currentSeriesId=sid;
     selectedEps=new Set(episodes.map(e=>e.vid_index));
-    currentTitle=vd.title||'未命名';
-    currentCover=vd.cover_url||'';
+    currentTitle=vd.title||vd.book_name||vd.name||'未命名';
+    currentCover=vd.cover_url||vd.book_pic||v.cover||'';
     document.getElementById('dramaTitle').textContent=currentTitle;
     document.getElementById('dramaMeta').textContent=`共${episodes.length}集`;
     if(vd.cover_url){document.getElementById('cover').src=vd.cover_url;document.getElementById('cover').style.display=''}
@@ -260,7 +260,7 @@ async function startDownload(){
       let vm=item.video_model;
       if(typeof vm==='string')vm=JSON.parse(vm);
       const vl=vm.video_list||[];
-      let best=null,bestScore=-1;
+      let best=null,bestScore=-1,bestKey='';
       for(const v of vl){
         const meta=v.video_meta||{};
         const defn=String(meta.definition||'');
@@ -268,23 +268,33 @@ async function startDownload(){
         const p=dm?parseInt(dm[1]):0;
         const w=parseInt(meta.vwidth||0),h=parseInt(meta.vheight||0),br=parseInt(meta.bitrate||0);
         const score=p*1000000+w*h+br;
-        if(score>bestScore){bestScore=score;best=v.main_url;}
+        if(score>bestScore){bestScore=score;best=v.main_url;bestKey=(v.encrypt_info||{}).spade_a||'';}
       }
       if(!best)throw new Error('无播放地址');
       const outPath=dramaDir+'/'+String(idx).padStart(3,'0')+'_第'+idx+'集.mp4';
-      document.getElementById('progressText').textContent=`下载 ${done+1}/${eps.length} (第${idx}集)`;
+      document.getElementById('progressText').textContent=`下载+解密 ${done+1}/${eps.length} (第${idx}集)`;
       await new Promise((res,rej)=>{
         const fid='fd'+(++fileDlId);
         fileCallbacks[fid]={res,rej,path:outPath};
-        AndroidBridge.downloadFile(best,outPath+'|'+fid);
-        setTimeout(()=>{if(fileCallbacks[fid]){fileCallbacks[fid].res();delete fileCallbacks[fid]}},60000);
+        AndroidBridge.downloadDecryptFile(best,bestKey,outPath+'|'+fid);
+        setTimeout(()=>{if(fileCallbacks[fid]){fileCallbacks[fid].res();delete fileCallbacks[fid]}},120000);
       });
     }catch(e){failed.push({ep:idx,err:e.message})}
     done++;
   }
   document.getElementById('progressText').textContent=failed.length?`完成，${failed.length}个失败`:'全部完成';
   document.getElementById('progressFill').style.width='100%';
-  if(failed.length)document.getElementById('errorList').innerHTML=failed.map(f=>'<div class="error-box">❌ 第'+f.ep+'集: '+f.err+'</div>').join('');
+  if(failed.length){
+    document.getElementById('errorList').innerHTML=failed.map(f=>{
+      const short=f.err.length>60?f.err.slice(0,60)+'...':f.err;
+      return `<div class="error-box">❌ 第${f.ep}集: ${short} <button class="sm" style="margin-left:8px;padding:2px 8px" onclick="retryEp(${f.ep})">重试</button></div>`;
+    }).join('');
+  }
+}
+
+function retryEp(idx){
+  AndroidBridge.toast('重试第'+idx+'集...');
+  startDownload();
 }
 
 function showSettings(){document.getElementById('settingsPanel').classList.add('show')}
