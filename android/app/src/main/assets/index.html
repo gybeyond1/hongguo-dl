@@ -348,25 +348,14 @@ window.onMergeDone=(cid,code,msg)=>{
 };
 
 function mergeDrama(id,source){
-  if(source==='cloud'&&cloudHost){
-    // Call NAS to merge
+  if(source==='cloud'||cloudHost){
+    AndroidBridge.toast('正在提交NAS合并...');
     const rid='cb'+(++httpCallbackId);
     httpCallbacks[rid]={resolve:()=>{},reject:()=>{}};
     AndroidBridge.httpRequest(`http://${cloudHost}:${cloudPort}/api/merge`,'POST',JSON.stringify({series_id:id}),rid);
-    AndroidBridge.toast('已提交NAS合并');
     return;
   }
-  // Local: check ffmpeg
-  const r=AndroidBridge.runCommandSync('which ffmpeg');
-  if(!r||!r.trim()){
-    if(confirm('本地没有ffmpeg，合并功能需要安装ffmpeg。\n\n请安装Termux后运行:\npkg install ffmpeg\n\n是否仍要尝试？')){
-      AndroidBridge.mergeVideos(downloadDir+'/'+id, downloadDir+'/'+id+'.mp4', 'mg'+Date.now());
-      AndroidBridge.toast('开始合并...');
-    }
-    return;
-  }
-  AndroidBridge.mergeVideos(downloadDir+'/'+id, downloadDir+'/'+id+'.mp4', 'mg'+Date.now());
-  AndroidBridge.toast('开始合并...');
+  AndroidBridge.toast('手机没有ffmpeg，请先在设置配置NAS地址');
 }
 </script>
 </body>
