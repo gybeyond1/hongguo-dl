@@ -202,7 +202,7 @@ async function parseDrama(){
   }catch(e){AndroidBridge.toast('解析失败: '+e.message)}
 }
 
-let dragStart=null,dragSelectMode=true,dragTimer=null,dragActive=false;
+let dragStart=null,dragSelectMode=true,dragTimer=null,dragActive=false,touchStartX=0,touchStartY=0;
 function renderEpGrid(){
   const g=document.getElementById('epGrid');g.innerHTML='';
   episodes.forEach(ep=>{
@@ -214,14 +214,20 @@ function renderEpGrid(){
       dragActive=false;
       dragStart=ep.vid_index;
       dragSelectMode=!selectedEps.has(ep.vid_index);
-      // Wait 200ms before starting drag selection
+      touchStartX=e.touches[0].clientX;
+      touchStartY=e.touches[0].clientY;
       dragTimer=setTimeout(()=>{
         dragActive=true;
         toggleEp(ep.vid_index);
       },500);
     });
     d.addEventListener('touchmove',e=>{
-      if(!dragActive){clearTimeout(dragTimer);dragStart=null;return}
+      if(!dragActive){
+        const dx=Math.abs(e.touches[0].clientX-touchStartX);
+        const dy=Math.abs(e.touches[0].clientY-touchStartY);
+        if(dx>10||dy>10){clearTimeout(dragTimer);dragStart=null}
+        return;
+      }
       e.preventDefault();
       const t=document.elementFromPoint(e.touches[0].clientX,e.touches[0].clientY);
       if(t&&t.dataset.ep){
@@ -233,9 +239,13 @@ function renderEpGrid(){
         renderEpGrid();
       }
     },{passive:false});
-    d.addEventListener('touchend',()=>{
+    d.addEventListener('touchend',e=>{
       clearTimeout(dragTimer);
-      if(!dragActive&&dragStart!=null){toggleEp(dragStart)}
+      if(!dragActive&&dragStart!=null){
+        const dx=Math.abs(e.changedTouches[0].clientX-touchStartX);
+        const dy=Math.abs(e.changedTouches[0].clientY-touchStartY);
+        if(dx<10&&dy<10)toggleEp(dragStart);
+      }
       dragStart=null;dragActive=false;
     });
     g.appendChild(d);

@@ -455,7 +455,25 @@ public class MainActivity extends Activity {
         public void httpRequest(String url, String method, String body, String callbackId) {
             executor.execute(() -> {
                 try {
-                    HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+                    URL u = new URL(url);
+                    HttpURLConnection conn;
+                    if (u.getProtocol().equals("https")) {
+                        javax.net.ssl.HttpsURLConnection https = (javax.net.ssl.HttpsURLConnection) u.openConnection();
+                        javax.net.ssl.TrustManager[] trustAll = new javax.net.ssl.TrustManager[]{
+                            new javax.net.ssl.X509TrustManager() {
+                                public void checkClientTrusted(java.security.cert.X509Certificate[] c, String t) {}
+                                public void checkServerTrusted(java.security.cert.X509Certificate[] c, String t) {}
+                                public java.security.cert.X509Certificate[] getAcceptedIssuers() { return new java.security.cert.X509Certificate[0]; }
+                            }
+                        };
+                        javax.net.ssl.SSLContext sc = javax.net.ssl.SSLContext.getInstance("TLS");
+                        sc.init(null, trustAll, new java.security.SecureRandom());
+                        https.setSSLSocketFactory(sc.getSocketFactory());
+                        https.setHostnameVerifier((h, s) -> true);
+                        conn = https;
+                    } else {
+                        conn = (HttpURLConnection) u.openConnection();
+                    }
                     conn.setRequestMethod(method);
                     conn.setRequestProperty("User-Agent", UA);
                     conn.setRequestProperty("Referer", "https://novelquickapp.com/");
