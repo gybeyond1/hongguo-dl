@@ -148,7 +148,7 @@ function apiCall(path,body){
   dbg('API: '+path+' body='+JSON.stringify(body).slice(0,100));
   return new Promise((resolve,reject)=>{
     const id='cb'+(++httpCallbackId);
-    httpCallbacks[id]={resolve:(r)=>{dbg('API resp: '+path+' -> '+r.slice(0,100));resolve(r)},reject:(e)=>{dbg('API err: '+path+' -> '+e);reject(e)}};
+    httpCallbacks[id]={resolve:(r)=>{dbg('API resp: '+path+' -> '+(r.text||'').slice(0,100));resolve(r)},reject:(e)=>{dbg('API err: '+path+' -> '+e);reject(e)}};
     AndroidBridge.httpRequest(buildUrl(path),'POST',JSON.stringify(body),id);
   });
 }
