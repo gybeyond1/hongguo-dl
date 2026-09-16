@@ -193,8 +193,8 @@ async function parseDrama(){
     episodes=vl.map((v,i)=>({vid_index:i+1,vid:String(v.vid)}));
     currentSeriesId=sid;
     selectedEps=new Set(episodes.map(e=>e.vid_index));
-    currentTitle=vd.title||vd.book_name||vd.name||'未命名';
-    currentCover=vd.cover_url||vd.book_pic||vd.cover||'';
+    currentTitle=vd.series_title||vd.title||vd.book_name||'未命名';
+    currentCover=vd.series_cover||vd.cover_url||vd.book_pic||'';
     document.getElementById('dramaTitle').textContent=currentTitle;
     document.getElementById('dramaMeta').textContent=`共${episodes.length}集`;
     if(vd.cover_url){document.getElementById('cover').src=vd.cover_url;document.getElementById('cover').style.display=''}
@@ -272,11 +272,16 @@ async function startDownload(){
       }
       if(!best)throw new Error('无播放地址');
       const outPath=dramaDir+'/'+String(idx).padStart(3,'0')+'_第'+idx+'集.mp4';
-      document.getElementById('progressText').textContent=`下载+解密 ${done+1}/${eps.length} (第${idx}集)`;
+      const dlLabel=bestKey?'下载+解密':'下载';
+      document.getElementById('progressText').textContent=`${dlLabel} ${done+1}/${eps.length} (第${idx}集)`;
       await new Promise((res,rej)=>{
         const fid='fd'+(++fileDlId);
         fileCallbacks[fid]={res,rej,path:outPath};
-        AndroidBridge.downloadDecryptFile(best,bestKey,outPath+'|'+fid);
+        if(bestKey){
+          AndroidBridge.downloadDecryptFile(best,bestKey,outPath+'|'+fid);
+        }else{
+          AndroidBridge.downloadFile(best,outPath+'|'+fid);
+        }
         setTimeout(()=>{if(fileCallbacks[fid]){fileCallbacks[fid].res();delete fileCallbacks[fid]}},120000);
       });
     }catch(e){failed.push({ep:idx,err:e.message})}
