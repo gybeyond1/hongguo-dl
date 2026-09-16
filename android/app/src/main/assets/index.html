@@ -99,30 +99,30 @@ button.sm{padding:5px 10px;font-size:12px;border-radius:6px}
 </div>
 
 <script>
-const API_BASE='https://api5-normal-sinfonlineb.fqnovel.com';
+const API='https://api5-normal-sinfonlineb.fqnovel.com';
+const COMMON_Q={klink_egdi:"AAI29o4dI-eMiO73_SRSbZ_0By1v3fUSriNeu8-L951MoXhWT88pzj5B",iid:"3788260546453235",device_id:"538083340353620",ac:"wifi",channel:"oppo_8662_64",aid:"8662",app_name:"novelread",version_code:"71532",version_name:"7.1.5.32",device_platform:"android",os:"android",ssmix:"a",device_type:"SM-N9860",device_brand:"Samsung",language:"zh",os_api:"28",os_version:"9",manifest_version_code:"71532",resolution:"900*1600",dpi:"320",update_version_code:"71532",host_abi:"arm64-v8a",dragon_device_type:"pad",pv_player:"71532",compliance_status:"0",need_personal_recommend:"1",player_so_load:"1",is_android_pad_screen:"0",rom_version:"PQ3A.190705.10241111+release-keys",cdid:"b4f93387-5319-4134-aab9-2cd4e9279b8f"};
+const DETAIL_BIZ_PARAM={detail_page_version:0,disable_digg_stat:false,image_shrink_datas_str:"W3siaW1hZ2VfdHlwZSI6MywiaW1hZ2Vfd2lkdGgiOjkwMCwic2hyaW5rX3R5cGUiOjN9LHsiaW1hZ2VfdHlwZSI6NCwiaW1hZ2Vfd2lkdGgiOjcyLCJzaHJpbmtfdHlwZSI6NH1d",need_all_video_definition:false,need_mp4_align:false,screen_width_px:"900",source:7,use_os_player:false,use_server_dns:false};
+const MODEL_BIZ_PARAM={detail_page_version:0,device_level:3,disable_digg_stat:false,need_all_video_definition:true,need_mp4_align:false,use_os_player:false,use_server_dns:false,video_platform:1024};
+
 let episodes=[],currentSeriesId='',selectedEps=new Set(),downloadDir='/sdcard/Download/HG_Download';
 let cloudHost='',cloudPort='8800',cloudPwd='',downloadTarget='local';
 let httpCallbackId=0,httpCallbacks={};
 
-function nativePost(path,body){
+function buildUrl(path){
+  const q=new URLSearchParams(COMMON_Q);
+  q.set('_rticket',String(Date.now()));
+  return API+path+'?'+q.toString();
+}
+
+function apiCall(path,body){
   return new Promise((resolve,reject)=>{
     const id='cb'+(++httpCallbackId);
     httpCallbacks[id]={resolve,reject};
-    AndroidBridge.httpRequest(API_BASE+path,'POST',JSON.stringify(body),id);
+    AndroidBridge.httpRequest(buildUrl(path),'POST',JSON.stringify(body),id);
   });
 }
-window.onHttpResponse=(id,code,body)=>{
-  if(httpCallbacks[id]){
-    try{httpCallbacks[id].resolve({status:code,json:()=>Promise.resolve(JSON.parse(body))})}
-    catch(e){httpCallbacks[id].reject(e)}
-    delete httpCallbacks[id];
-  }
-};
-window.onHttpError=(id,msg)=>{
-  if(httpCallbacks[id]){httpCallbacks[id].reject(new Error(msg));delete httpCallbacks[id]}
-};
 
-function nativeGet(url){
+function httpGet(url){
   return new Promise((resolve,reject)=>{
     const id='cb'+(++httpCallbackId);
     httpCallbacks[id]={resolve,reject};
@@ -130,21 +130,37 @@ function nativeGet(url){
   });
 }
 
+window.onHttpResponse=(id,code,finalUrl,body)=>{
+  if(httpCallbacks[id]){
+    httpCallbacks[id].resolve({status:code,url:finalUrl,text:body,json:()=>Promise.resolve(JSON.parse(body))});
+    delete httpCallbacks[id];
+  }
+};
+window.onHttpError=(id,msg)=>{
+  if(httpCallbacks[id]){httpCallbacks[id].reject(new Error(msg));delete httpCallbacks[id]}
+};
+
 async function resolveSeriesId(url){
   url=url.trim();
-  const m=url.match(/https?:\/\/[^\s，。）)]+/);
-  if(m)url=m[0];
-  const m2=url.match(/https?:\/\/novelquickapp\.com\/s\/([a-zA-Z0-9]+)/);
+  if(/^\d+$/.test(url))return url;
+  const m=url.match(/https?:\/\/[^\s<>"'，。]+/);
+  if(m)url=m[0].replace(/[.,;:!?，。；：！？]+$/,'');
+  const r=await httpGet(url);
+  const finalUrl=r.url;
+  let m2=finalUrl.match(/video_series_id=(\d+)/);
+  if(m2)return m2[1];
+  m2=finalUrl.match(/schemeParams[^&]*/);
   if(m2){
     try{
-      const r=await nativeGet(url);
-      const m3=r.match(/(\d{15,})/);
-      if(m3)return m3[1];
+      const raw=decodeURIComponent(decodeURIComponent(m2[0]));
+      const jm=raw.match(/"video_id"\s*:\s*"(\d+)"/);
+      if(jm)return jm[1];
     }catch(e){}
-    throw new Error('无法解析链接，请直接输入数字ID');
   }
-  if(/^\d{15,}$/.test(url))return url;
-  throw new Error('无法识别链接');
+  const body=r.text||'';
+  m2=body.match(/video_series_id=(\d+)/)||body.match(/"video_id"\s*:\s*"(\d+)"/)||body.match(/"series_id"\s*:\s*"(\d+)"/);
+  if(m2)return m2[1];
+  throw new Error('无法解析链接');
 }
 
 async function parseDrama(){
@@ -153,16 +169,19 @@ async function parseDrama(){
   AndroidBridge.toast('解析中...');
   try{
     const sid=await resolveSeriesId(url);
-    const r=await nativePost('/novel/player/multi_video_detail/preload/v1',{series_id:sid,aid:1967,device_platform:0});
+    const r=await apiCall('/novel/player/multi_video_detail/preload/v1',{biz_param:DETAIL_BIZ_PARAM,dr_scene:"preload",series_id:sid});
     const j=await r.json();
-    if(!j.data||!j.data.album)throw new Error('解析失败');
-    const a=j.data.album;
-    episodes=(a.video_list||[]).map((v,i)=>({vid_index:i+1,vid:String(v.video_id||v.item_id)}));
+    if(j.code!==0)throw new Error(j.message||'API错误');
+    const d=j.data;
+    const sid2=Object.keys(d)[0];
+    const vd=d[sid2].video_data||{};
+    const vl=vd.video_list||[];
+    episodes=vl.map((v,i)=>({vid_index:i+1,vid:String(v.vid)}));
     currentSeriesId=sid;
     selectedEps=new Set(episodes.map(e=>e.vid_index));
-    document.getElementById('dramaTitle').textContent=a.title||'未知';
+    document.getElementById('dramaTitle').textContent=vd.title||'未知';
     document.getElementById('dramaMeta').textContent=`共${episodes.length}集`;
-    if(a.cover_url){document.getElementById('cover').src=a.cover_url;document.getElementById('cover').style.display=''}
+    if(vd.cover_url){document.getElementById('cover').src=vd.cover_url;document.getElementById('cover').style.display=''}
     renderEpGrid();
     document.getElementById('infoCard').classList.remove('hidden');
     AndroidBridge.toast('解析成功');
@@ -215,13 +234,13 @@ async function startDownload(){
     document.getElementById('progressFill').style.width=Math.round(done/eps.length*100)+'%';
     try{
       const ep=episodes.find(e=>e.vid_index===idx);
-      const r=await nativePost('/novel/player/multi_video_model/preload/v1',{mixed_video_id_map:{'1004':[ep.vid]},aid:1967});
+      const r=await apiCall('/novel/player/multi_video_model/preload/v1',{biz_param:MODEL_BIZ_PARAM,dr_scene:"preload",series_id:currentSeriesId,mixed_video_id_map:{1024:[ep.vid]}});
       const j=await r.json();
-      const vi=j.data.video_infos['1004'][0];
-      const url=vi.play_url||vi.video_url;
+      const vi=j.data.video_infos[1024][0];
+      const url=vi.play_url;
       const outPath=dramaDir+'/'+String(idx).padStart(3,'0')+'_第'+idx+'集.mp4';
       AndroidBridge.downloadFile(url,outPath);
-      await new Promise(r=>setTimeout(r,1000));
+      await new Promise(r2=>setTimeout(r2,1500));
     }catch(e){failed.push(idx)}
     done++;
   }
@@ -250,7 +269,7 @@ function saveSettings(){
 }
 
 function onSharedText(text){
-  const m=text.match(/https?:\/\/[^\s，。）)]+/);
+  const m=text.match(/https?:\/\/[^\s<>"'，。）)]+/);
   if(m){
     document.getElementById('urlInput').value=m[0];
     parseDrama();
