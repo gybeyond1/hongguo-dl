@@ -469,7 +469,6 @@ public class MainActivity extends Activity {
 
                         android.media.MediaCodec.BufferInfo info = new android.media.MediaCodec.BufferInfo();
                         long lastPts = 0;
-                        boolean firstVideoSample = true;
                         while (true) {
                             int sampleSize = extractor.readSampleData(buffer, 0);
                             if (sampleSize < 0) break;
@@ -479,14 +478,7 @@ public class MainActivity extends Activity {
                             info.flags = extractor.getSampleFlags();
                             int trackIdx = extractor.getSampleTrackIndex();
                             int muxTrack = -1;
-                            if (trackIdx == videoTrack) {
-                                muxTrack = videoMuxTrack;
-                                // For non-first files, skip until first keyframe
-                                if (!firstFile && (info.flags & android.media.MediaCodec.BUFFER_FLAG_KEY_FRAME) == 0) {
-                                    extractor.advance();
-                                    continue;
-                                }
-                            }
+                            if (trackIdx == videoTrack) muxTrack = videoMuxTrack;
                             else if (trackIdx == audioTrack) muxTrack = audioMuxTrack;
                             if (muxTrack >= 0 && info.size > 0) {
                                 muxer.writeSampleData(muxTrack, buffer, info);
