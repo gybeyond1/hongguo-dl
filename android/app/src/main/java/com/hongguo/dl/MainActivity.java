@@ -546,6 +546,7 @@ public class MainActivity extends Activity {
                     conn.setRequestProperty("Referer", "https://novelquickapp.com/");
                     conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
                     conn.setRequestProperty("Accept", "application/json; charset=utf-8,application/x-protobuf");
+                    conn.setRequestProperty("Accept-Encoding", "identity");
                     if (!authToken.isEmpty() && !url.contains("fqnovel.com")) {
                         conn.setRequestProperty("X-Auth-Token", authToken);
                     }
@@ -554,9 +555,14 @@ public class MainActivity extends Activity {
                     conn.setInstanceFollowRedirects(true);
                     if ("POST".equals(method) && body != null && !body.isEmpty()) {
                         conn.setDoOutput(true);
-                        conn.getOutputStream().write(body.getBytes("UTF-8"));
+                        java.io.OutputStream os = conn.getOutputStream();
+                        os.write(body.getBytes("UTF-8"));
+                        os.flush();
+                        os.close();
                     }
+                    dbg("HTTP " + method + " " + url + " body=" + (body != null ? body.substring(0, Math.min(body.length(), 100)) : ""));
                     int code = conn.getResponseCode();
+                    dbg("HTTP response code=" + code);
                     String finalUrl = conn.getURL().toString();
                     InputStream is = (code >= 200 && code < 400) ? conn.getInputStream() : conn.getErrorStream();
                     StringBuilder sb = new StringBuilder();
