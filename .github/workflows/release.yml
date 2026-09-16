@@ -28,14 +28,12 @@ jobs:
         with:
           gradle-version: '8.2'
 
-      - name: Build APKs
+      - name: Build APK
         working-directory: android
-        run: gradle assembleFullDebug assembleNasDebug --no-daemon
+        run: gradle assembleFullDebug --no-daemon
 
-      - name: Rename APKs
-        run: |
-          cp android/app/build/outputs/apk/full/debug/app-full-debug.apk hongguo-dl-quan.apk
-          cp android/app/build/outputs/apk/nas/debug/app-nas-debug.apk hongguo-dl-nas.apk
+      - name: Rename APK
+        run: cp android/app/build/outputs/apk/full/debug/app-full-debug.apk 红果短剧下载.apk
 
       - name: Pull Docker image and save as tar
         run: |
@@ -55,15 +53,14 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create v1.0 \
-            --title "红果短剧下载器 v1.0" \
-            --notes "红果短剧下载器" \
+            --title "红果短剧下载 v1.0" \
+            --notes "红果短剧下载 - 本地下载+合并，NAS远程控制" \
             --target main
 
       - name: Upload assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload v1.0 hongguo-dl-quan.apk --clobber
-          gh release upload v1.0 hongguo-dl-nas.apk --clobber
+          gh release upload v1.0 红果短剧下载.apk --clobber
           gh release upload v1.0 hongguo-dl-docker.tar.gz --clobber
           gh release upload v1.0 docker-compose.yml --clobber
