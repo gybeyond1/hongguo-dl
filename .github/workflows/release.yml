@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     branches: [main]
-    paths: ['android/**', '.github/workflows/', 'README.md', 'docker-compose.yml']
+    paths: ['android/**', '.github/workflows/', 'README.md', 'docker-compose.yml', 'docker/**']
   workflow_dispatch:
 
 jobs:
@@ -35,9 +35,11 @@ jobs:
       - name: Rename APK
         run: cp android/app/build/outputs/apk/full/debug/app-full-debug.apk hongguo-dl.apk
 
-      - name: Pull Docker image and save as tar
+      - name: Build and push Docker image
         run: |
-          docker pull gybeyond/hongguo-dl:latest
+          docker login -u gybeyond -p ${{ secrets.DOCKERHUB_TOKEN }}
+          docker build -t gybeyond/hongguo-dl:latest docker/
+          docker push gybeyond/hongguo-dl:latest
           docker save gybeyond/hongguo-dl:latest | gzip > hongguo-dl-docker.tar.gz
 
       - name: Delete existing release v1.0
