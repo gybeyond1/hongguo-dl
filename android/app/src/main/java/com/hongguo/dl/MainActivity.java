@@ -466,19 +466,10 @@ public class MainActivity extends Activity {
                         long lastPts = 0;
                         long basePts = -1;
                         int vCount = 0, aCount = 0;
-                        // For files after the first, skip to first video keyframe
+                        // For subsequent files, seek to first keyframe (aligns both tracks)
                         if (totalDuration > 0 && videoTrack >= 0) {
-                            while (true) {
-                                int ss = extractor.readSampleData(buffer, 0);
-                                if (ss < 0) break;
-                                int ti = extractor.getSampleTrackIndex();
-                                int fl = extractor.getSampleFlags();
-                                if (ti == videoTrack && (fl & android.media.MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0) {
-                                    basePts = extractor.getSampleTime();
-                                    break;
-                                }
-                                extractor.advance();
-                            }
+                            extractor.seekTo(0, android.media.MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
+                            dbg("  seekTo keyframe");
                         }
                         while (true) {
                             int sampleSize = extractor.readSampleData(buffer, 0);
