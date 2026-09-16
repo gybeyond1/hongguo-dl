@@ -385,6 +385,7 @@ function onSettingsLoaded(host,port,pwd){
   document.getElementById('setHost').value=cloudHost;
   document.getElementById('setPwd').value=cloudPwd;
   if(cloudPwd&&window.AndroidBridge)AndroidBridge.setAuthToken(cloudPwd);
+  showDownloaded();
 }
 
 function testConnection(){
