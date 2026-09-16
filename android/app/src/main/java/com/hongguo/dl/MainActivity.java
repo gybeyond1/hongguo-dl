@@ -423,38 +423,71 @@ public class MainActivity extends Activity {
         public void mergeVideos(String dirPath, String outPath, String callbackId) {
             executor.execute(() -> {
                 try {
-                    String ffmpeg = getFfmpegPath();
-                    if (ffmpeg.isEmpty()) throw new Exception("ffmpeg未下载");
                     File dir = new File(dirPath);
-                    File[] files = dir.listFiles((d, name) -> name.endsWith(".mp4"));
+                    File[] files = dir.listFiles((d, name) -> name.endsWith(".mp4") && !name.endsWith("_merged.mp4"));
                     if (files == null || files.length == 0) throw new Exception("无mp4文件");
                     java.util.Arrays.sort(files, (a, b) -> a.getName().compareTo(b.getName()));
-                    StringBuilder list = new StringBuilder();
-                    for (File f : files) list.append("file '").append(f.getAbsolutePath()).append("'\n");
-                    File listFile = new File(dir, "filelist.txt");
-                    FileOutputStream lfos = new FileOutputStream(listFile);
-                    lfos.write(list.toString().getBytes());
-                    lfos.close();
-                    String nativeDir = getApplicationInfo().nativeLibraryDir;
-                    ProcessBuilder pb = new ProcessBuilder(
-                        ffmpeg, "-y", "-f", "concat", "-safe", "0",
-                        "-i", listFile.getAbsolutePath(),
-                        "-c", "copy", outPath);
-                    pb.environment().put("LD_LIBRARY_PATH", nativeDir);
-                    pb.redirectErrorStream(true);
-                    Process p = pb.start();
-                    BufferedReader br = new BufferedReader(new InputStreamReader(p.getInputStream()));
-                    StringBuilder errOut = new StringBuilder();
-                    String line;
-                    while ((line = br.readLine()) != null) errOut.append(line).append("\n");
-                    int code = p.waitFor();
-                    listFile.delete();
-                    final int fc = code;
-                    final String errMsg = errOut.toString().length() > 200 ? errOut.toString().substring(errOut.toString().length() - 200) : errOut.toString();
+
+                    dbg("Merging " + files.length + " files to " + outPath);
+                    android.media.MediaMuxer muxer = new android.media.MediaMuxer(outPath, android.media.MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
+                    int[] trackIndices = new int[2];
+                    long[] startTimes = new long[2];
+                    boolean firstFile = true;
+                    long totalDuration = 0;
+
+                    for (int f = 0; f < files.length; f++) {
+                        dbg("Processing file " + (f+1) + "/" + files.length + ": " + files[f].getName());
+                        android.media.MediaExtractor extractor = new android.media.MediaExtractor();
+                        extractor.setDataSource(files[f].getAbsolutePath());
+                        int videoTrack = -1, audioTrack = -1;
+                        for (int i = 0; i < extractor.getTrackCount(); i++) {
+                            android.media.MediaFormat fmt = extractor.getTrackFormat(i);
+                            String mime = fmt.getString(android.media.MediaFormat.KEY_MIME);
+                            if (mime.startsWith("video/") && videoTrack < 0) videoTrack = i;
+                            else if (mime.startsWith("audio/") && audioTrack < 0) audioTrack = i;
+                        }
+                        if (firstFile) {
+                            if (videoTrack >= 0) {
+                                trackIndices[0] = muxer.addTrack(extractor.getTrackFormat(videoTrack));
+                                extractor.selectTrack(videoTrack);
+                            }
+                            if (audioTrack >= 0) {
+                                trackIndices[1] = muxer.addTrack(extractor.getTrackFormat(audioTrack));
+                                extractor.selectTrack(audioTrack);
+                            }
+                            muxer.start();
+                            firstFile = false;
+                        } else {
+                            extractor.selectTrack(videoTrack >= 0 ? videoTrack : 0);
+                            if (audioTrack >= 0) extractor.selectTrack(audioTrack);
+                        }
+
+                        java.nio.ByteBuffer buffer = java.nio.ByteBuffer.allocate(1024 * 1024);
+                        android.media.MediaCodec.BufferInfo info = new android.media.MediaCodec.BufferInfo();
+                        long maxPts = 0;
+                        while (true) {
+                            int sampleSize = extractor.readSampleData(buffer, 0);
+                            if (sampleSize < 0) break;
+                            info.presentationTimeUs = extractor.getSampleTime() + totalDuration;
+                            info.flags = extractor.getSampleFlags();
+                            int trackIdx = extractor.getSampleTrackIndex();
+                            int muxTrack = (trackIdx == videoTrack) ? trackIndices[0] : (trackIdx == audioTrack ? trackIndices[1] : -1);
+                            if (muxTrack >= 0) {
+                                muxer.writeSampleData(muxTrack, buffer, info);
+                            }
+                            if (info.presentationTimeUs > maxPts) maxPts = info.presentationTimeUs;
+                            extractor.advance();
+                        }
+                        totalDuration = maxPts;
+                        extractor.release();
+                    }
+                    muxer.stop();
+                    muxer.release();
+                    dbg("Merge complete: " + outPath);
                     runOnUiThread(() -> webView.evaluateJavascript(
-                        "window.onMergeDone && onMergeDone('" + callbackId + "'," + fc + ",'" +
-                            errMsg.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n") + "')", null));
+                        "window.onMergeDone && onMergeDone('" + callbackId + "',0,'')", null));
                 } catch (Exception e) {
+                    dbg("Merge error: " + e.getMessage());
                     final String msg = e.getMessage().replace("\\", "\\\\").replace("'", "\\'");
                     runOnUiThread(() -> webView.evaluateJavascript(
                         "window.onMergeDone && onMergeDone('" + callbackId + "',-1,'" + msg + "')", null));
