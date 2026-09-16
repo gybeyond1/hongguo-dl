@@ -468,28 +468,36 @@ public class MainActivity extends Activity {
 
                         android.media.MediaCodec.BufferInfo info = new android.media.MediaCodec.BufferInfo();
                         long lastPts = 0;
+                        boolean seenFirstKeyframe = firstFile; // first file writes from start
                         long basePts = -1;
                         while (true) {
                             int sampleSize = extractor.readSampleData(buffer, 0);
                             if (sampleSize < 0) break;
                             long rawPts = extractor.getSampleTime();
+                            int trackIdx = extractor.getSampleTrackIndex();
+                            int flags = extractor.getSampleFlags();
+                            // For subsequent files, skip until first video keyframe
+                            if (!seenFirstKeyframe) {
+                                if (trackIdx == videoTrack && (flags & android.media.MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0) {
+                                    seenFirstKeyframe = true;
+                                    basePts = rawPts; // normalize from this point
+                                    dbg("  found keyframe, rawPts=" + rawPts);
+                                } else {
+                                    extractor.advance();
+                                    continue;
+                                }
+                            }
                             if (basePts < 0) basePts = rawPts;
                             info.offset = 0;
                             info.size = sampleSize;
                             info.presentationTimeUs = rawPts - basePts + totalDuration;
                             if (info.presentationTimeUs < 0) info.presentationTimeUs = 0;
-                            info.flags = extractor.getSampleFlags();
-                            int trackIdx = extractor.getSampleTrackIndex();
+                            info.flags = flags;
                             int muxTrack = -1;
                             if (trackIdx == videoTrack) muxTrack = videoMuxTrack;
                             else if (trackIdx == audioTrack) muxTrack = audioMuxTrack;
                             if (muxTrack >= 0 && info.size > 0) {
-                                try {
-                                    muxer.writeSampleData(muxTrack, buffer, info);
-                                } catch (Exception we) {
-                                    dbg("writeSampleData failed: track=" + trackIdx + " size=" + sampleSize + " pts=" + info.presentationTimeUs + " flags=" + info.flags);
-                                    throw we;
-                                }
+                                muxer.writeSampleData(muxTrack, buffer, info);
                             }
                             if (info.presentationTimeUs > lastPts) lastPts = info.presentationTimeUs;
                             extractor.advance();
