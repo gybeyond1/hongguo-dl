@@ -348,7 +348,7 @@ public class MainActivity extends Activity {
                 if (!ffmpeg.exists() || ffmpeg.length() < 100000) {
                     // Copy from jniLibs
                     copyFile(new File(nativeDir, "libffmpeg.so"), ffmpeg);
-                    ffmpeg.setExecutable(true, false);
+                    Runtime.getRuntime().exec(new String[]{"chmod", "755", ffmpeg.getAbsolutePath()}).waitFor();
                     // Copy all .so files
                     String[] needed = {"libavcodec","libavdevice","libavfilter","libavformat","libavutil","libswresample","libswscale"};
                     for (String lib : needed) {
@@ -356,7 +356,8 @@ public class MainActivity extends Activity {
                         if (src.exists()) {
                             File dst = new File(libDir, lib + ".so");
                             copyFile(src, dst);
-                            // Create versioned symlink: libavcodec.so -> libavcodec.so.62
+                            Runtime.getRuntime().exec(new String[]{"chmod", "755", dst.getAbsolutePath()}).waitFor();
+                            // Create versioned symlink
                             String soname = getSoname(src);
                             if (soname != null) {
                                 Runtime.getRuntime().exec(new String[]{"ln","-sf",lib+".so", new File(libDir, soname).getAbsolutePath()}).waitFor();
