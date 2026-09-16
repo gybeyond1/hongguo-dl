@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     branches: [main]
-    paths: ['android/**', '.github/workflows/']
+    paths: ['android/**', '.github/workflows/', 'README.md', 'docker-compose.yml']
   workflow_dispatch:
 
 jobs:
@@ -32,11 +32,18 @@ jobs:
         working-directory: android
         run: gradle assembleDebug --no-daemon
 
+      - name: Rename APK
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk hongguo-dl.apk
+
+      - name: Pull Docker image and save as tar
+        run: |
+          docker pull gybeyond/hongguo-dl:latest
+          docker save gybeyond/hongguo-dl:latest | gzip > hongguo-dl-docker.tar.gz
+
       - name: Delete existing release v1.0
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release delete v1.0 --yes 2>/dev/null || true
+        run: gh release delete v1.0 --yes 2>/dev/null || true
 
       - name: Create release v1.0
         env:
@@ -44,7 +51,8 @@ jobs:
         run: |
           gh release create v1.0 \
             --title "红果短剧下载器 v1.0" \
-            --notes "红果短剧下载器，支持 Docker NAS 部署和 Android APK。" \
+            --notes "红果短剧下载器" \
             --target main \
-            android/app/build/outputs/apk/debug/app-debug.apk \
+            hongguo-dl.apk \
+            hongguo-dl-docker.tar.gz \
             docker-compose.yml
