@@ -125,31 +125,44 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public String getDownloadDir() {
-            File dir = new File(Environment.getExternalStorageDirectory(), "Download/HG_Download");
+            File dir = getExternalFilesDir("HG_Download");
+            if (dir == null) dir = new File(getFilesDir(), "HG_Download");
             dir.mkdirs();
             return dir.getAbsolutePath();
         }
 
         @JavascriptInterface
-        public void downloadFile(String url, String path) {
+        public void downloadFile(String url, String pathAndCid) {
             executor.execute(() -> {
+                String path = pathAndCid;
+                String cid = "";
+                int idx = pathAndCid.lastIndexOf("|");
+                if (idx > 0) {
+                    path = pathAndCid.substring(0, idx);
+                    cid = pathAndCid.substring(idx + 1);
+                }
                 try {
                     HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
-                    conn.setRequestProperty("User-Agent",
-                        "Mozilla/5.0 (Linux; Android 9) AppleWebKit/537.36 Mobile");
+                    conn.setRequestProperty("User-Agent", UA);
                     conn.setRequestProperty("Referer", "https://novelquickapp.com/");
+                    conn.setConnectTimeout(15000);
+                    conn.setReadTimeout(60000);
                     conn.connect();
                     InputStream is = conn.getInputStream();
-                    FileOutputStream fos = new FileOutputStream(path);
+                    File outFile = new File(path);
+                    outFile.getParentFile().mkdirs();
+                    FileOutputStream fos = new FileOutputStream(outFile);
                     byte[] buf = new byte[8192];
                     int n;
                     while ((n = is.read(buf)) != -1) fos.write(buf, 0, n);
                     fos.close(); is.close(); conn.disconnect();
+                    final String fpath = path;
                     runOnUiThread(() -> webView.evaluateJavascript(
-                        "window.onFileDownloaded && onFileDownloaded('" + path + "')", null));
+                        "window.onFileDownloaded && onFileDownloaded('" + fpath + "')", null));
                 } catch (Exception e) {
+                    final String msg = e.getMessage().replace("\\", "\\\\").replace("'", "\\'");
                     runOnUiThread(() -> webView.evaluateJavascript(
-                        "window.onFileError && onFileError('" + e.getMessage().replace("'", "\\'") + "')", null));
+                        "window.onFileError && onFileError('" + msg + "')", null));
                 }
             });
         }
