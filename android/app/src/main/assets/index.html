@@ -458,7 +458,8 @@ async function showDownloaded(){
         const j=JSON.parse(r.text);
         if(j.code===0&&j.data){
           for(const c of j.data){
-            items.push({id:c.name,count:c.count,size:(c.size_mb||0)*1048576,source:'cloud',title:c.title||c.name,cover:c.cover||''});
+            items.push({id:c.name,count:c.count,size:(c.size_mb||0)*1048576,source:'cloud',title:c.title||c.name,cover:c.cover||'',
+              merged:c.merged,missing:c.missing||0,missing_list:c.missing_list||[],series_id:c.series_id||''});
           }
         }
       }catch(e){dbg('cloud files error: '+e.message)}
@@ -474,13 +475,29 @@ async function showDownloaded(){
             <span style="font-size:11px;padding:2px 6px;border-radius:4px;background:${it.source==='cloud'?'rgba(46,204,113,.2)':'rgba(52,152,219,.2)'};color:${it.source==='cloud'?'#2ecc71':'#3498db'}">${it.source==='cloud'?'☁️ NAS':'📱 本地'}</span>
           </div>
           <div style="color:var(--dim);font-size:12px;margin-top:4px">${it.count}集 · ${(it.size/1048576).toFixed(1)}MB</div>
+          ${it.missing>0?`<div style="color:#e67e22;font-size:12px;margin-top:4px">缺${it.missing}集 <span style="color:var(--green);cursor:pointer" onclick="toggleMissing('${it.id}',this)">[显示]</span></div>
+          <div id="miss_${it.id}" style="display:none;color:var(--dim);font-size:11px;margin-top:2px">第${it.missing_list.join(',')}集 <span style="color:var(--green);cursor:pointer;margin-left:4px" onclick="retryMissing('${it.id}','${it.series_id}',[${it.missing_list.join(',')}])">[重试]</span></div>`:''}
           <div style="display:flex;gap:8px;margin-top:8px">
-            ${it.source==='cloud'?`<button class="sm" style="background:var(--green)" onclick="mergeDrama('${it.id}','cloud')">🔗 合并</button>`:''}
+            ${it.source==='cloud'?(it.merged?`<span style="font-size:12px;color:var(--green);padding:4px 8px">✅ 已合并</span>`:`<button class="sm" style="background:var(--green)" onclick="mergeDrama('${it.id}','cloud')">🔗 合并</button>`):''}
             <button class="sm" style="background:#e74c3c" onclick="deleteDrama('${it.id}','${it.source}')">🗑 删除</button>
           </div>
         </div>
       </div>`).join('');
   }catch(e){list.innerHTML='<div class="error-box">读取失败: '+e.message+'</div>'}
+}
+
+function toggleMissing(id,el){
+  const d=document.getElementById('miss_'+id);
+  if(d.style.display==='none'){d.style.display='block';el.textContent='[隐藏]'}else{d.style.display='none';el.textContent='[显示]'}
+}
+
+function retryMissing(id,seriesId,eps){
+  if(!seriesId){AndroidBridge.toast('缺少series_id，无法重试');return}
+  if(!confirm('重新下载缺失的集数？'))return;
+  AndroidBridge.toast('已提交到NAS');
+  const rid='cb'+(++httpCallbackId);
+  httpCallbacks[rid]={resolve:()=>{},reject:()=>{}};
+  AndroidBridge.httpRequest(cloudHost+'/api/download','POST',JSON.stringify({series_id:seriesId,episodes:eps}),rid);
 }
 
 function deleteDrama(id,source){
