@@ -341,43 +341,9 @@ public class MainActivity extends Activity {
         public String getFfmpegPath() {
             try {
                 String nativeDir = getApplicationInfo().nativeLibraryDir;
-                File binDir = new File(getFilesDir(), "bin");
-                File libDir = new File(binDir, "lib");
-                binDir.mkdirs(); libDir.mkdirs();
-                File ffmpeg = new File(binDir, "ffmpeg");
-                // Always force re-extract to fix permission issues
-                if (binDir.exists()) {
-                    deleteDir(binDir);
-                }
-                binDir.mkdirs(); libDir.mkdirs();
-                // Copy from jniLibs
-                copyFile(new File(nativeDir, "libffmpeg.so"), ffmpeg);
-                Runtime.getRuntime().exec(new String[]{"chmod", "755", ffmpeg.getAbsolutePath()}).waitFor();
-                    // Copy all .so files
-                    String[] needed = {"libavcodec","libavdevice","libavfilter","libavformat","libavutil","libswresample","libswscale"};
-                    for (String lib : needed) {
-                        File src = new File(nativeDir, lib + ".so");
-                        if (src.exists()) {
-                            File dst = new File(libDir, lib + ".so");
-                            copyFile(src, dst);
-                            Runtime.getRuntime().exec(new String[]{"chmod", "755", dst.getAbsolutePath()}).waitFor();
-                            // Create versioned symlink
-                            String soname = getSoname(src);
-                            if (soname != null) {
-                                Runtime.getRuntime().exec(new String[]{"ln","-sf",lib+".so", new File(libDir, soname).getAbsolutePath()}).waitFor();
-                            }
-                        }
-                    }
+                File ffmpeg = new File(nativeDir, "libffmpeg.so");
                 return ffmpeg.exists() ? ffmpeg.getAbsolutePath() : "";
             } catch (Exception e) { return ""; }
-        }
-
-        private void deleteDir(File dir) {
-            if (dir.isDirectory()) {
-                File[] kids = dir.listFiles();
-                if (kids != null) for (File k : kids) deleteDir(k);
-            }
-            dir.delete();
         }
 
         private void copyFile(File src, File dst) throws Exception {
@@ -462,9 +428,9 @@ public class MainActivity extends Activity {
                     FileOutputStream lfos = new FileOutputStream(listFile);
                     lfos.write(list.toString().getBytes());
                     lfos.close();
-                    String libDir = new File(getFilesDir(), "bin/lib").getAbsolutePath();
+                    String nativeDir = getApplicationInfo().nativeLibraryDir;
                     Process p = Runtime.getRuntime().exec(new String[]{"sh", "-c",
-                        "LD_LIBRARY_PATH=" + libDir + " " +
+                        "LD_LIBRARY_PATH=" + nativeDir + " " +
                         ffmpeg + " -y -f concat -safe 0 -i '" + listFile.getAbsolutePath() + "' -c copy '" + outPath + "' 2>&1"});
                     BufferedReader br = new BufferedReader(new InputStreamReader(p.getInputStream()));
                     StringBuilder errOut = new StringBuilder();

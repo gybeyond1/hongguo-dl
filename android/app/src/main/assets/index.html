@@ -218,10 +218,10 @@ function renderEpGrid(){
       dragTimer=setTimeout(()=>{
         dragActive=true;
         toggleEp(ep.vid_index);
-      },300);
+      },500);
     });
     d.addEventListener('touchmove',e=>{
-      if(!dragActive||dragStart==null)return;
+      if(!dragActive){clearTimeout(dragTimer);dragStart=null;return}
       e.preventDefault();
       const t=document.elementFromPoint(e.touches[0].clientX,e.touches[0].clientY);
       if(t&&t.dataset.ep){
