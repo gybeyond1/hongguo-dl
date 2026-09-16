@@ -342,27 +342,25 @@ public class MainActivity extends Activity {
             try {
                 String nativeDir = getApplicationInfo().nativeLibraryDir;
                 File binDir = new File(getFilesDir(), "bin");
-                binDir.mkdirs();
-                File ffmpeg = new File(binDir, "ffmpeg");
-                // Copy ffmpeg
-                File srcFf = new File(nativeDir, "libffmpeg.so");
-                if (srcFf.exists()) {
-                    copyFile(srcFf, ffmpeg);
-                    ffmpeg.setExecutable(true, false);
-                }
-                // Copy all .so files
                 File libDir = new File(binDir, "lib");
-                libDir.mkdirs();
+                binDir.mkdirs(); libDir.mkdirs();
+                File ffmpeg = new File(binDir, "ffmpeg");
+                // Always re-copy to ensure correct permissions
+                File srcFf = new File(nativeDir, "libffmpeg.so");
+                if (!srcFf.exists()) return "";
+                copyFile(srcFf, ffmpeg);
+                Runtime.getRuntime().exec(new String[]{"chmod", "755", ffmpeg.getAbsolutePath()}).waitFor();
+                // Copy all .so files
                 String[] needed = {"libavcodec","libavdevice","libavfilter","libavformat","libavutil","libswresample","libswscale"};
                 for (String lib : needed) {
                     File src = new File(nativeDir, lib + ".so");
                     if (src.exists()) {
                         File dst = new File(libDir, lib + ".so");
                         copyFile(src, dst);
-                        dst.setExecutable(true, false);
+                        Runtime.getRuntime().exec(new String[]{"chmod", "755", dst.getAbsolutePath()}).waitFor();
                     }
                 }
-                return ffmpeg.exists() ? ffmpeg.getAbsolutePath() : "";
+                return ffmpeg.getAbsolutePath();
             } catch (Exception e) { return ""; }
         }
 
