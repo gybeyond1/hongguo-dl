@@ -471,17 +471,6 @@ function mergeDrama(id,source){
     }
     return;
   }
-  // Local merge: use bundled ffmpeg
-  dbg('mergeDrama local: id='+id);
-  const ffmpegPath = AndroidBridge.getFfmpegPath();
-  dbg('ffmpegPath='+ffmpegPath);
-  if(!ffmpegPath){
-    dbg('ffmpeg not found, requesting extract');
-    if(!confirm('首次合并需要解压内置FFmpeg，是否继续？'))return;
-    AndroidBridge.downloadFfmpeg('dlff');
-    AndroidBridge.toast('正在解压FFmpeg...');
-    return;
-  }
   if(!confirm('确认合并本地已下载的剧集？'))return;
   const dramaDir = AndroidBridge.getDownloadDir()+ '/'+id;
   const outPath = AndroidBridge.getDownloadDir()+ '/'+id+'.mp4';
