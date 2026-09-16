@@ -429,9 +429,13 @@ public class MainActivity extends Activity {
                     lfos.write(list.toString().getBytes());
                     lfos.close();
                     String nativeDir = getApplicationInfo().nativeLibraryDir;
-                    Process p = Runtime.getRuntime().exec(new String[]{"sh", "-c",
-                        "LD_LIBRARY_PATH=" + nativeDir + " " +
-                        ffmpeg + " -y -f concat -safe 0 -i '" + listFile.getAbsolutePath() + "' -c copy '" + outPath + "' 2>&1"});
+                    ProcessBuilder pb = new ProcessBuilder(
+                        ffmpeg, "-y", "-f", "concat", "-safe", "0",
+                        "-i", listFile.getAbsolutePath(),
+                        "-c", "copy", outPath);
+                    pb.environment().put("LD_LIBRARY_PATH", nativeDir);
+                    pb.redirectErrorStream(true);
+                    Process p = pb.start();
                     BufferedReader br = new BufferedReader(new InputStreamReader(p.getInputStream()));
                     StringBuilder errOut = new StringBuilder();
                     String line;
