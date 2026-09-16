@@ -278,9 +278,57 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public String getFfmpegPath() {
+            File f = new File(getFilesDir(), "bin/ffmpeg");
+            return f.exists() ? f.getAbsolutePath() : "";
+        }
+
+        @JavascriptInterface
+        public void downloadFfmpeg(String callbackId) {
+            executor.execute(() -> {
+                try {
+                    File binDir = new File(getFilesDir(), "bin");
+                    binDir.mkdirs();
+                    File ffmpeg = new File(binDir, "ffmpeg");
+                    String url = "https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v6.0/ffmpeg-6.0-android-arm64-gpl.tar.gz";
+                    if (android.os.Build.SUPPORTED_ABIS[0].contains("x86")) {
+                        url = "https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v6.0/ffmpeg-6.0-android-x86_64-gpl.tar.gz";
+                    }
+                    HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+                    conn.connect();
+                    InputStream is = conn.getInputStream();
+                    File tmp = new File(getCacheDir(), "ffmpeg.tar.gz");
+                    FileOutputStream fos = new FileOutputStream(tmp);
+                    byte[] buf = new byte[8192];
+                    int n;
+                    while ((n = is.read(buf)) != -1) fos.write(buf, 0, n);
+                    fos.close(); is.close(); conn.disconnect();
+                    // Extract tar.gz
+                    Process p = Runtime.getRuntime().exec(new String[]{"sh", "-c",
+                        "cd " + binDir.getAbsolutePath() + " && tar xzf " + tmp.getAbsolutePath() + " && chmod +x ffmpeg"});
+                    p.waitFor();
+                    tmp.delete();
+                    if (ffmpeg.exists()) {
+                        runOnUiThread(() -> webView.evaluateJavascript(
+                            "window.onFfmpegDownloaded && onFfmpegDownloaded('" + ffmpeg.getAbsolutePath() + "')", null));
+                    } else {
+                        runOnUiThread(() -> webView.evaluateJavascript(
+                            "window.onFfmpegError && onFfmpegError('解压失败')", null));
+                    }
+                } catch (Exception e) {
+                    final String msg = e.getMessage().replace("\\", "\\\\").replace("'", "\\'");
+                    runOnUiThread(() -> webView.evaluateJavascript(
+                        "window.onFfmpegError && onFfmpegError('" + msg + "')", null));
+                }
+            });
+        }
+
+        @JavascriptInterface
         public void mergeVideos(String dirPath, String outPath, String callbackId) {
             executor.execute(() -> {
                 try {
+                    String ffmpeg = getFfmpegPath();
+                    if (ffmpeg.isEmpty()) throw new Exception("ffmpeg未下载");
                     File dir = new File(dirPath);
                     File[] files = dir.listFiles((d, name) -> name.endsWith(".mp4"));
                     if (files == null || files.length == 0) throw new Exception("无mp4文件");
@@ -292,14 +340,12 @@ public class MainActivity extends Activity {
                     lfos.write(list.toString().getBytes());
                     lfos.close();
                     Process p = Runtime.getRuntime().exec(new String[]{"sh", "-c",
-                        "ffmpeg -y -f concat -safe 0 -i '" + listFile.getAbsolutePath() + "' -c copy '" + outPath + "'"});
+                        ffmpeg + " -y -f concat -safe 0 -i '" + listFile.getAbsolutePath() + "' -c copy '" + outPath + "'"});
                     int code = p.waitFor();
-                    String err = new String(p.getErrorStream().readAllBytes());
-                    if (code == 0) listFile.delete();
+                    listFile.delete();
                     final int fc = code;
-                    final String msg = err.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n");
                     runOnUiThread(() -> webView.evaluateJavascript(
-                        "window.onMergeDone && onMergeDone('" + callbackId + "'," + fc + ",'" + msg + "')", null));
+                        "window.onMergeDone && onMergeDone('" + callbackId + "'," + fc + ",'')", null));
                 } catch (Exception e) {
                     final String msg = e.getMessage().replace("\\", "\\\\").replace("'", "\\'");
                     runOnUiThread(() -> webView.evaluateJavascript(
