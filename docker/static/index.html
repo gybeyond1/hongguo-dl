@@ -163,6 +163,8 @@ button.sm { padding: 6px 12px; font-size: 12px; border-radius: 8px; }
   border-radius: 6px;
   margin: 4px 0;
   font-size: 11px;
+  word-break: break-all;
+  overflow-wrap: break-word;
 }
 
 /* Downloaded list */
@@ -545,8 +547,20 @@ async function retryTask(taskId, seriesId, eps) {
   const r = await apiFetch('/api/download', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({series_id: seriesId, episodes: eps})});
   const j = await r.json();
   if (j.code !== 0) { alert('重试失败: ' + j.msg); return; }
-  // Clear old task
   await apiFetch('/api/tasks/' + taskId, {method: 'DELETE'});
+  startPoll();
+}
+
+async function downloadMissing(name) {
+  const drama = dramaData[name];
+  if (!drama || !drama.missing_list || !drama.missing_list.length) return;
+  const sid = drama.series_id;
+  if (!sid) { alert('无剧集ID'); return; }
+  if (!confirm(`下载缺失的 ${drama.missing_list.length} 集？`)) return;
+  const r = await apiFetch('/api/download', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({series_id: sid, episodes: drama.missing_list})});
+  const j = await r.json();
+  if (j.code !== 0) { alert('下载失败: ' + j.msg); return; }
+  document.getElementById('progressCard').classList.remove('hidden');
   startPoll();
 }
 
@@ -576,16 +590,32 @@ async function loadFiles() {
     if (d.data.length === 0) { el.innerHTML = '<div style="color:#555;text-align:center;padding:20px">暂无下载</div>'; return; }
     el.innerHTML = d.data.map(drama => {
       let tags = '';
-      if (drama.merged) tags = '<span class="tag tag-ok">已合并</span>';
-      else if (drama.missing > 0) tags = `<span class="tag tag-warn" onclick="toggleMissing('${drama.name}')">缺${drama.missing}集 ▾</span>`;
-      else if (drama.total_episodes && drama.count >= drama.total_episodes) tags = '<span class="tag tag-ok">✓ 已下完</span>';
+      let missingHtml = '';
+      if (drama.merged) {
+        tags = '<span class="tag tag-ok">已合并</span>';
+      } else if (drama.missing > 0) {
+        tags = `<span class="tag tag-warn">缺${drama.missing}集</span>`;
+        const ml = drama.missing_list || [];
+        let ranges = [];
+        if (ml.length) {
+          let s = ml[0], p = ml[0];
+          for (let i = 1; i < ml.length; i++) {
+            if (ml[i] === p + 1) p = ml[i];
+            else { ranges.push(s === p ? s + '' : s + '-' + p); s = p = ml[i]; }
+          }
+          ranges.push(s === p ? s + '' : s + '-' + p);
+        }
+        missingHtml = `<div style="color:var(--orange);font-size:11px;margin-top:4px">缺 ${ranges.join('、')} <button class="sm" style="background:var(--orange);margin-left:6px;padding:2px 8px;font-size:10px" onclick="downloadMissing('${drama.name}')">下载缺集</button></div>`;
+      } else if (drama.total_episodes && drama.count >= drama.total_episodes) {
+        tags = '<span class="tag tag-ok">✓ 已下完</span>';
+      }
       const mergeBtn = drama.merged ? '' : `<button class="sm secondary" onclick="mergeDrama('${drama.name}')">合并</button>`;
       return `<div class="drama-row">
         ${drama.cover ? `<img class="drama-thumb" src="${drama.cover}" loading="lazy">` : ''}
         <div class="drama-body">
           <div class="drama-title">${drama.title || drama.name}</div>
           <div class="drama-sub">${drama.count}集 · ${drama.size_mb}MB${drama.total_episodes ? ` · 共${drama.total_episodes}集` : ''} ${tags}</div>
-          <div id="missing_${drama.name}" class="hidden expand-box"></div>
+          ${missingHtml}
           <div id="mergelog_${drama.name}" class="hidden expand-box"></div>
           <div class="file-grid">
             ${drama.files.map(f => `<div class="file-chip"><span title="${f}">${f}</span><button onclick="deleteFile('${drama.name}','${f}')">✕</button></div>`).join('')}

@@ -267,6 +267,7 @@ def list_files():
             title = drama_dir.name
             cover = ""
             total_eps = 0
+            series_id = ""
             meta_path = drama_dir / ".meta.json"
             if meta_path.exists():
                 try:
@@ -275,6 +276,7 @@ def list_files():
                         title = meta.get("title", drama_dir.name)
                         cover = meta.get("cover", "")
                         total_eps = meta.get("total_episodes", 0)
+                        series_id = meta.get("series_id", "")
                 except Exception:
                     pass
             downloaded_eps = set()
@@ -307,6 +309,7 @@ def list_files():
                 "merged_file": merged_file or "",
                 "size_mb": round(total_size / 1024 / 1024, 1),
                 "files": display_files,
+                "series_id": series_id,
             })
     return {"code": 0, "data": result}
 
