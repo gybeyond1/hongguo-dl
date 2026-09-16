@@ -254,14 +254,14 @@ public class HongguoDecrypt {
 
         // stsd patches
         Map<Integer, byte[]> patches = new HashMap<>();
-        findStsd(top, data, patches);
+        for (Box tb : top) findStsd(tb, data, patches);
 
         // rebuild moov
         byte[] newMoov = rebuildBox(moov, data, patches, null);
         int delta = moov.size - newMoov.length;
 
         // adjust stco/co64
-        findStco(top, data, delta);
+        for (Box tb : top) findStco(tb, data, delta);
 
         newMoov = rebuildBox(moov, data, patches, null);
 
