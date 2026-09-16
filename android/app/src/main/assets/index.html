@@ -201,6 +201,11 @@ async function resolveSeriesId(url){
   const body=r.text||'';
   m2=body.match(/video_series_id=(\d+)/)||body.match(/"video_id"\s*:\s*"(\d+)"/)||body.match(/"series_id"\s*:\s*"(\d+)"/);
   if(m2)return m2[1];
+  // For motion comics, vid is the series/material id - extract from schemeParams in URL
+  m2=finalUrl.match(/schemeParams[^&]*?vid%22%3A%22(\d+)/);
+  if(m2)return m2[1];
+  m2=finalUrl.match(/"vid"\s*:\s*"(\d+)"/);
+  if(m2)return m2[1];
   throw new Error('无法解析链接');
 }
 
