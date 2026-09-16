@@ -44,7 +44,6 @@ button.sm{padding:5px 10px;font-size:12px;border-radius:6px}
 
 <div class="topbar">
   <h1>🎬 红果下载器</h1>
-  <button class="settings-btn" onclick="showDownloaded()">📁</button>
   <button class="settings-btn" onclick="showSettings()">⚙️</button>
 </div>
 
@@ -83,7 +82,7 @@ button.sm{padding:5px 10px;font-size:12px;border-radius:6px}
     <div id="errorList"></div>
   </div>
 
-  <div id="downloadedCard" class="card hidden">
+  <div id="downloadedCard" class="card">
     <div class="card-title">📁 已下载</div>
     <div id="downloadedList"></div>
   </div>
@@ -479,6 +478,7 @@ function mergeDrama(id,source){
   httpCallbacks[rid]={resolve:()=>{AndroidBridge.toast('合并任务已提交');},reject:()=>{}};
   AndroidBridge.httpRequest(`${cloudHost}/api/merge`,'POST',JSON.stringify({drama:id}),rid);
 }
+showDownloaded();
 </script>
 </body>
 </html>
