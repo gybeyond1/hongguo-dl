@@ -44,6 +44,7 @@ button.sm{padding:5px 10px;font-size:12px;border-radius:6px}
 
 <div class="topbar">
   <h1>🎬 红果下载器</h1>
+  <button class="settings-btn" onclick="showDownloaded()">📁</button>
   <button class="settings-btn" onclick="showSettings()">⚙️</button>
 </div>
 
@@ -82,6 +83,11 @@ button.sm{padding:5px 10px;font-size:12px;border-radius:6px}
     <div id="progressText"></div>
     <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
     <div id="errorList"></div>
+  </div>
+
+  <div id="downloadedCard" class="card hidden">
+    <div class="card-title">📁 已下载</div>
+    <div id="downloadedList"></div>
   </div>
 </div>
 
@@ -305,6 +311,37 @@ function onSharedText(text){
 }
 
 if(window.AndroidBridge)downloadDir=AndroidBridge.getDownloadDir();
+
+async function showDownloaded(){
+  const card=document.getElementById('downloadedCard');
+  card.classList.remove('hidden');
+  const list=document.getElementById('downloadedList');
+  try{
+    const dirs=JSON.parse(AndroidBridge.listDir(downloadDir));
+    const items=dirs.filter(d=>d.isDir).map(d=>{
+      const files=JSON.parse(AndroidBridge.listDir(downloadDir+'/'+d.name));
+      const mps=files.filter(f=>f.name.endsWith('.mp4'));
+      return {id:d.name,count:mps.length,size:mps.reduce((s,f)=>s+f.size,0)};
+    }).filter(x=>x.count>0);
+    if(!items.length){list.innerHTML='<div style="color:var(--dim)">暂无下载</div>';return}
+    list.innerHTML=items.map(it=>`
+      <div style="background:var(--input);padding:12px;border-radius:8px;margin-bottom:8px">
+        <div style="font-size:14px;font-weight:600">${it.id}</div>
+        <div style="color:var(--dim);font-size:12px;margin-top:4px">${it.count}集 · ${(it.size/1048576).toFixed(1)}MB</div>
+        <button class="sm" style="margin-top:8px;background:var(--green)" onclick="mergeDrama('${it.id}')">🔗 合并为MP4</button>
+      </div>`).join('');
+  }catch(e){list.innerHTML='<div class="error-box">读取失败: '+e.message+'</div>'}
+}
+
+window.onMergeDone=(cid,code,msg)=>{
+  if(code===0){AndroidBridge.toast('合并完成');showDownloaded()}
+  else{AndroidBridge.toast('合并失败: '+msg.slice(0,100))}
+};
+
+function mergeDrama(id){
+  AndroidBridge.mergeVideos(downloadDir+'/'+id, downloadDir+'/'+id+'.mp4', 'mg'+Date.now());
+  AndroidBridge.toast('开始合并...');
+}
 </script>
 </body>
 </html>
