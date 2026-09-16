@@ -424,19 +424,22 @@ public class MainActivity extends Activity {
             executor.execute(() -> {
                 try {
                     File dir = new File(dirPath);
-                    File[] files = dir.listFiles((d, name) -> name.endsWith(".mp4") && !name.endsWith("_merged.mp4"));
+                    File[] files = dir.listFiles((d, name) -> name.endsWith(".mp4") && !name.contains("_merged") && !name.equals(new File(outPath).getName()));
                     if (files == null || files.length == 0) throw new Exception("无mp4文件");
                     java.util.Arrays.sort(files, (a, b) -> a.getName().compareTo(b.getName()));
-
                     dbg("Merging " + files.length + " files to " + outPath);
+
+                    // Delete old merged file if exists
+                    new File(outPath).delete();
+
                     android.media.MediaMuxer muxer = new android.media.MediaMuxer(outPath, android.media.MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
-                    int[] trackIndices = new int[2];
-                    long[] startTimes = new long[2];
-                    boolean firstFile = true;
+                    int videoMuxTrack = -1, audioMuxTrack = -1;
                     long totalDuration = 0;
+                    boolean muxerStarted = false;
+                    java.nio.ByteBuffer buffer = java.nio.ByteBuffer.allocateDirect(2 * 1024 * 1024);
 
                     for (int f = 0; f < files.length; f++) {
-                        dbg("Processing file " + (f+1) + "/" + files.length + ": " + files[f].getName());
+                        dbg("Processing " + (f+1) + "/" + files.length + ": " + files[f].getName());
                         android.media.MediaExtractor extractor = new android.media.MediaExtractor();
                         extractor.setDataSource(files[f].getAbsolutePath());
                         int videoTrack = -1, audioTrack = -1;
@@ -446,44 +449,52 @@ public class MainActivity extends Activity {
                             if (mime.startsWith("video/") && videoTrack < 0) videoTrack = i;
                             else if (mime.startsWith("audio/") && audioTrack < 0) audioTrack = i;
                         }
-                        if (firstFile) {
-                            if (videoTrack >= 0) {
-                                trackIndices[0] = muxer.addTrack(extractor.getTrackFormat(videoTrack));
-                                extractor.selectTrack(videoTrack);
-                            }
-                            if (audioTrack >= 0) {
-                                trackIndices[1] = muxer.addTrack(extractor.getTrackFormat(audioTrack));
-                                extractor.selectTrack(audioTrack);
-                            }
-                            muxer.start();
-                            firstFile = false;
-                        } else {
-                            extractor.selectTrack(videoTrack >= 0 ? videoTrack : 0);
-                            if (audioTrack >= 0) extractor.selectTrack(audioTrack);
-                        }
+                        dbg("  videoTrack=" + videoTrack + " audioTrack=" + audioTrack);
 
-                        java.nio.ByteBuffer buffer = java.nio.ByteBuffer.allocate(1024 * 1024);
+                        if (!muxerStarted) {
+                            if (videoTrack >= 0) videoMuxTrack = muxer.addTrack(extractor.getTrackFormat(videoTrack));
+                            if (audioTrack >= 0) audioMuxTrack = muxer.addTrack(extractor.getTrackFormat(audioTrack));
+                            muxer.start();
+                            muxerStarted = true;
+                        }
+                        if (videoTrack >= 0) extractor.selectTrack(videoTrack);
+                        if (audioTrack >= 0) extractor.selectTrack(audioTrack);
+
                         android.media.MediaCodec.BufferInfo info = new android.media.MediaCodec.BufferInfo();
-                        long maxPts = 0;
+                        long lastPts = 0;
                         while (true) {
                             int sampleSize = extractor.readSampleData(buffer, 0);
                             if (sampleSize < 0) break;
+                            info.offset = 0;
+                            info.size = sampleSize;
                             info.presentationTimeUs = extractor.getSampleTime() + totalDuration;
                             info.flags = extractor.getSampleFlags();
                             int trackIdx = extractor.getSampleTrackIndex();
-                            int muxTrack = (trackIdx == videoTrack) ? trackIndices[0] : (trackIdx == audioTrack ? trackIndices[1] : -1);
-                            if (muxTrack >= 0) {
+                            int muxTrack = -1;
+                            if (trackIdx == videoTrack) muxTrack = videoMuxTrack;
+                            else if (trackIdx == audioTrack) muxTrack = audioMuxTrack;
+                            if (muxTrack >= 0 && info.size > 0) {
                                 muxer.writeSampleData(muxTrack, buffer, info);
                             }
-                            if (info.presentationTimeUs > maxPts) maxPts = info.presentationTimeUs;
+                            if (info.presentationTimeUs > lastPts) lastPts = info.presentationTimeUs;
                             extractor.advance();
                         }
-                        totalDuration = maxPts;
+                        totalDuration = lastPts;
                         extractor.release();
+                        dbg("  done, totalDuration=" + totalDuration);
                     }
                     muxer.stop();
                     muxer.release();
-                    dbg("Merge complete: " + outPath);
+
+                    // Verify output
+                    File outFile = new File(outPath);
+                    dbg("Output size: " + outFile.length() + " bytes");
+                    if (outFile.length() < 100000) throw new Exception("合并文件过小(" + outFile.length() + "字节)，可能出错");
+
+                    // Delete individual episode files on success
+                    for (File f : files) f.delete();
+                    dbg("Deleted " + files.length + " individual files");
+
                     runOnUiThread(() -> webView.evaluateJavascript(
                         "window.onMergeDone && onMergeDone('" + callbackId + "',0,'')", null));
                 } catch (Exception e) {

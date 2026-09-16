@@ -473,7 +473,7 @@ function mergeDrama(id,source){
   }
   if(!confirm('确认合并本地已下载的剧集？'))return;
   const dramaDir = AndroidBridge.getDownloadDir()+ '/'+id;
-  const outPath = AndroidBridge.getDownloadDir()+ '/'+id+'.mp4';
+  const outPath = dramaDir + '/_merged_full.mp4';
   dbg('dramaDir='+dramaDir);
   dbg('outPath='+outPath);
   AndroidBridge.mergeVideos(dramaDir, outPath, 'mg'+Date.now());
