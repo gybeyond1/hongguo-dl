@@ -89,6 +89,15 @@ button.sm{padding:5px 10px;font-size:12px;border-radius:6px}
   </div>
 </div>
 
+<button id="debugBtn" onclick="toggleDebug()" style="position:fixed;bottom:20px;right:20px;width:48px;height:48px;border-radius:50%;background:#e94560;color:#fff;border:none;font-size:20px;z-index:999;box-shadow:0 2px 8px rgba(0,0,0,.3)">🐛</button>
+<div id="debugPanel" style="display:none;position:fixed;bottom:80px;right:10px;left:10px;height:50vh;background:#1a1a2e;border:1px solid #e94560;border-radius:12px;z-index:998;overflow-y:auto;padding:10px;font-family:monospace;font-size:11px;color:#0f0">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <b style="color:#e94560">调试日志</b>
+    <button onclick="document.getElementById('debugLog').innerHTML=''" style="background:#333;color:#fff;border:none;padding:4px 10px;border-radius:4px;font-size:11px">清空</button>
+  </div>
+  <div id="debugLog"></div>
+</div>
+
 <div class="settings-panel" id="settingsPanel">
   <div class="settings-box">
     <h2>⚙️ NAS 连接</h2>
@@ -114,16 +123,32 @@ let cloudHost='',cloudPwd='',downloadTarget='local';
 let httpCallbackId=0,httpCallbacks={};
 let fileDlId=0,fileCallbacks={};
 
+function dbg(msg){
+  const el=document.getElementById('debugLog');
+  if(el){
+    const t=new Date().toLocaleTimeString();
+    el.innerHTML+=`[${t}] ${msg}<br>`;
+    el.scrollTop=el.scrollHeight;
+  }
+  console.log(msg);
+}
+function toggleDebug(){
+  const p=document.getElementById('debugPanel');
+  p.style.display=p.style.display==='none'?'block':'none';
+}
+
 function buildUrl(path){
+  dbg('buildUrl: '+path);
   const q=new URLSearchParams(COMMON_Q);
   q.set('_rticket',String(Date.now()));
   return API+path+'?'+q.toString();
 }
 
 function apiCall(path,body){
+  dbg('API: '+path+' body='+JSON.stringify(body).slice(0,100));
   return new Promise((resolve,reject)=>{
     const id='cb'+(++httpCallbackId);
-    httpCallbacks[id]={resolve,reject};
+    httpCallbacks[id]={resolve:(r)=>{dbg('API resp: '+path+' -> '+r.slice(0,100));resolve(r)},reject:(e)=>{dbg('API err: '+path+' -> '+e);reject(e)}};
     AndroidBridge.httpRequest(buildUrl(path),'POST',JSON.stringify(body),id);
   });
 }
@@ -428,6 +453,7 @@ function deleteDrama(id){
 }
 
 window.onMergeDone=(cid,code,msg)=>{
+  dbg('mergeDone: code='+code+' msg='+msg);
   if(code===0){AndroidBridge.toast('合并完成');showDownloaded()}
   else{AndroidBridge.toast('合并失败: '+msg.slice(0,100))}
 };
@@ -447,8 +473,11 @@ function mergeDrama(id,source){
     return;
   }
   // Local merge: use bundled ffmpeg
+  dbg('mergeDrama local: id='+id);
   const ffmpegPath = AndroidBridge.getFfmpegPath();
+  dbg('ffmpegPath='+ffmpegPath);
   if(!ffmpegPath){
+    dbg('ffmpeg not found, requesting extract');
     if(!confirm('首次合并需要解压内置FFmpeg，是否继续？'))return;
     AndroidBridge.downloadFfmpeg('dlff');
     AndroidBridge.toast('正在解压FFmpeg...');
@@ -457,6 +486,8 @@ function mergeDrama(id,source){
   if(!confirm('确认合并本地已下载的剧集？'))return;
   const dramaDir = AndroidBridge.getDownloadDir()+ '/'+id;
   const outPath = AndroidBridge.getDownloadDir()+ '/'+id+'.mp4';
+  dbg('dramaDir='+dramaDir);
+  dbg('outPath='+outPath);
   AndroidBridge.mergeVideos(dramaDir, outPath, 'mg'+Date.now());
   AndroidBridge.toast('本地合并中...');
 }
