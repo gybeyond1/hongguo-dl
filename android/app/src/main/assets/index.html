@@ -244,9 +244,10 @@ async function startDownload(){
     return;
   }
 
-  const dramaDir=downloadDir+'/'+currentSeriesId;
+  const safeTitle=(currentTitle||currentSeriesId).replace(/[\\/:*?"<>|]/g,'_');
+  const dramaDir=downloadDir+'/'+safeTitle;
   AndroidBridge.runCommand('mkdir -p '+dramaDir,'mkdir');
-  AndroidBridge.writeFile(dramaDir+'/.meta.json',JSON.stringify({source:'local',title:currentTitle,cover:currentCover}));
+  AndroidBridge.writeFile(dramaDir+'/.meta.json',JSON.stringify({source:'local',title:currentTitle,cover:currentCover,id:currentSeriesId}));
   let done=0,failed=[];
   for(const idx of eps){
     document.getElementById('progressText').textContent=`获取播放地址 ${done+1}/${eps.length} (第${idx}集)`;

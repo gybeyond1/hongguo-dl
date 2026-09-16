@@ -395,15 +395,39 @@ public class MainActivity extends Activity {
                     lfos.write(list.toString().getBytes());
                     lfos.close();
                     File libDir = new File(getFilesDir(), "bin/lib");
+                    // Create symlinks: libavcodec.so.62.28.102 -> libavcodec.so.62
+                    File[] libs = libDir.listFiles();
+                    if (libs != null) {
+                        for (File lib : libs) {
+                            String name = lib.getName();
+                            // libavcodec.so.62.28.102 -> libavcodec.so.62
+                            String[] parts = name.split("\\.");
+                            if (parts.length >= 4) {
+                                String linkName = parts[0] + "." + parts[1] + "." + parts[2];
+                                File link = new File(libDir, linkName);
+                                if (!link.exists()) {
+                                    try {
+                                        Runtime.getRuntime().exec(new String[]{"ln", "-sf", name, link.getAbsolutePath()}).waitFor();
+                                    } catch (Exception ignored) {}
+                                }
+                            }
+                        }
+                    }
                     String ldLibPath = libDir.getAbsolutePath();
                     Process p = Runtime.getRuntime().exec(new String[]{"sh", "-c",
-                        "LD_LIBRARY_PATH=" + ldLibPath + ":$LD_LIBRARY_PATH " +
-                        ffmpeg + " -y -f concat -safe 0 -i '" + listFile.getAbsolutePath() + "' -c copy '" + outPath + "'"});
+                        "LD_LIBRARY_PATH=" + ldLibPath + " " +
+                        ffmpeg + " -y -f concat -safe 0 -i '" + listFile.getAbsolutePath() + "' -c copy '" + outPath + "' 2>&1"});
+                    BufferedReader br = new BufferedReader(new InputStreamReader(p.getInputStream()));
+                    StringBuilder errOut = new StringBuilder();
+                    String line;
+                    while ((line = br.readLine()) != null) errOut.append(line).append("\n");
                     int code = p.waitFor();
                     listFile.delete();
                     final int fc = code;
+                    final String errMsg = errOut.toString().length() > 200 ? errOut.toString().substring(errOut.toString().length() - 200) : errOut.toString();
                     runOnUiThread(() -> webView.evaluateJavascript(
-                        "window.onMergeDone && onMergeDone('" + callbackId + "'," + fc + ",'')", null));
+                        "window.onMergeDone && onMergeDone('" + callbackId + "'," + fc + ",'" +
+                            errMsg.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n") + "')", null));
                 } catch (Exception e) {
                     final String msg = e.getMessage().replace("\\", "\\\\").replace("'", "\\'");
                     runOnUiThread(() -> webView.evaluateJavascript(
