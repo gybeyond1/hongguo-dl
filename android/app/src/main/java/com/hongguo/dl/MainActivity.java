@@ -119,6 +119,12 @@ public class MainActivity extends Activity {
     public class JsBridge {
 
         @JavascriptInterface
+        public void dbg(String msg) {
+            runOnUiThread(() -> webView.evaluateJavascript(
+                "dbg && dbg('[java] '+" + "\"" + msg.replace("\"", "\\\"") + "\")", null));
+        }
+
+        @JavascriptInterface
         public void saveSettings(String host, String port, String password) {
             prefs.edit()
                 .putString("cloud_host", host)
@@ -341,29 +347,9 @@ public class MainActivity extends Activity {
         public String getFfmpegPath() {
             try {
                 String nativeDir = getApplicationInfo().nativeLibraryDir;
-                File binDir = new File(getFilesDir(), "bin");
-                File libDir = new File(binDir, "lib");
-                binDir.mkdirs(); libDir.mkdirs();
-                File ffmpeg = new File(binDir, "ffmpeg");
-                // Always re-copy to ensure correct permissions
-                File srcFf = new File(nativeDir, "libffmpeg.so");
-                if (!srcFf.exists()) return "";
-                copyFile(srcFf, ffmpeg);
-                ffmpeg.setReadable(true, false);
-                ffmpeg.setWritable(true, false);
-                ffmpeg.setExecutable(true, false);
-                // Copy all .so files
-                String[] needed = {"libavcodec","libavdevice","libavfilter","libavformat","libavutil","libswresample","libswscale"};
-                for (String lib : needed) {
-                    File src = new File(nativeDir, lib + ".so");
-                    if (src.exists()) {
-                        File dst = new File(libDir, lib + ".so");
-                        copyFile(src, dst);
-                        dst.setReadable(true, false);
-                        dst.setExecutable(true, false);
-                    }
-                }
-                return ffmpeg.getAbsolutePath();
+                File ffmpeg = new File(nativeDir, "libffmpeg.so");
+                dbg("getFfmpegPath: " + ffmpeg.getAbsolutePath() + " exists=" + ffmpeg.exists());
+                return ffmpeg.exists() ? ffmpeg.getAbsolutePath() : "";
             } catch (Exception e) { return ""; }
         }
 
@@ -449,12 +435,12 @@ public class MainActivity extends Activity {
                     FileOutputStream lfos = new FileOutputStream(listFile);
                     lfos.write(list.toString().getBytes());
                     lfos.close();
-                    String libDir = new File(getFilesDir(), "bin/lib").getAbsolutePath();
+                    String nativeDir = getApplicationInfo().nativeLibraryDir;
                     ProcessBuilder pb = new ProcessBuilder(
                         ffmpeg, "-y", "-f", "concat", "-safe", "0",
                         "-i", listFile.getAbsolutePath(),
                         "-c", "copy", outPath);
-                    pb.environment().put("LD_LIBRARY_PATH", libDir);
+                    pb.environment().put("LD_LIBRARY_PATH", nativeDir);
                     pb.redirectErrorStream(true);
                     Process p = pb.start();
                     BufferedReader br = new BufferedReader(new InputStreamReader(p.getInputStream()));
