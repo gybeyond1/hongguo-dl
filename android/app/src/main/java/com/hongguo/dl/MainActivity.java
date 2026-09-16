@@ -451,8 +451,16 @@ public class MainActivity extends Activity {
                         for (int i = 0; i < extractor.getTrackCount(); i++) {
                             android.media.MediaFormat fmt = extractor.getTrackFormat(i);
                             String mime = fmt.getString(android.media.MediaFormat.KEY_MIME);
-                            if (mime.startsWith("video/") && videoTrack < 0) videoTrack = i;
-                            else if (mime.startsWith("audio/") && audioTrack < 0) audioTrack = i;
+                            if (mime.startsWith("video/") && videoTrack < 0) {
+                                videoTrack = i;
+                                dbg("  video: " + mime + " " + fmt.getInt(android.media.MediaFormat.KEY_WIDTH) + "x" + fmt.getInt(android.media.MediaFormat.KEY_HEIGHT) + " br=" + fmt.getInt(android.media.MediaFormat.KEY_BIT_RATE));
+                            }
+                            else if (mime.startsWith("audio/") && audioTrack < 0) {
+                                audioTrack = i;
+                                int sr = fmt.contains(android.media.MediaFormat.KEY_SAMPLE_RATE) ? fmt.getInt(android.media.MediaFormat.KEY_SAMPLE_RATE) : 0;
+                                int ch = fmt.contains(android.media.MediaFormat.KEY_CHANNEL_COUNT) ? fmt.getInt(android.media.MediaFormat.KEY_CHANNEL_COUNT) : 0;
+                                dbg("  audio: " + mime + " " + sr + "Hz " + ch + "ch");
+                            }
                         }
                         dbg("  videoTrack=" + videoTrack + " audioTrack=" + audioTrack);
 
