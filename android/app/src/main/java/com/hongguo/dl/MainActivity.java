@@ -442,21 +442,8 @@ public class MainActivity extends Activity {
                     for (int f = 1; f < files.length; f++) {
                         dbg("  Appending " + files[f].getName());
                         org.mp4parser.muxer.Movie movie = org.mp4parser.muxer.MovieCreator.build(files[f].getAbsolutePath());
-                        // Match video and audio tracks and concatenate
-                        java.util.List<org.mp4parser.muxer.Track> resultTracks = result.getTracks();
-                        for (org.mp4parser.muxer.Track newTrack : movie.getTracks()) {
-                            String newType = newTrack.getHandler();
-                            boolean matched = false;
-                            for (org.mp4parser.muxer.Track rt : resultTracks) {
-                                if (rt.getHandler().equals(newType)) {
-                                    // Concatenate samples
-                                    rt.getSamples().addAll(newTrack.getSamples());
-                                    rt.getSampleDurations().addAll(newTrack.getSampleDurations());
-                                    matched = true;
-                                    break;
-                                }
-                            }
-                            if (!matched) result.addTrack(newTrack);
+                        for (org.mp4parser.muxer.Track t : movie.getTracks()) {
+                            result.addTrack(t);
                         }
                     }
                     dbg("Writing output...");
