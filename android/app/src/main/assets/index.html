@@ -204,16 +204,37 @@ async function parseDrama(){
   }catch(e){AndroidBridge.toast('解析失败: '+e.message)}
 }
 
+let dragStart=null,dragSelectMode=true;
 function renderEpGrid(){
   const g=document.getElementById('epGrid');g.innerHTML='';
   episodes.forEach(ep=>{
     const d=document.createElement('div');
     d.className='ep'+(selectedEps.has(ep.vid_index)?' sel':'');
     d.textContent=ep.vid_index;
-    d.onclick=()=>{selectedEps.has(ep.vid_index)?selectedEps.delete(ep.vid_index):selectedEps.add(ep.vid_index);renderEpGrid()};
+    d.dataset.ep=ep.vid_index;
+    d.addEventListener('touchstart',e=>{
+      dragStart=ep.vid_index;
+      dragSelectMode=!selectedEps.has(ep.vid_index);
+      toggleEp(ep.vid_index);
+    });
+    d.addEventListener('touchmove',e=>{
+      if(dragStart==null)return;
+      const t=document.elementFromPoint(e.touches[0].clientX,e.touches[0].clientY);
+      if(t&&t.dataset.ep){
+        const cur=parseInt(t.dataset.ep);
+        const s=Math.min(dragStart,cur),en=Math.max(dragStart,cur);
+        for(let i=s;i<=en;i++){
+          if(dragSelectMode)selectedEps.add(i);else selectedEps.delete(i);
+        }
+        renderEpGrid();
+      }
+    });
+    d.addEventListener('touchend',()=>{dragStart=null});
+    d.onclick=()=>{if(!dragStart){toggleEp(ep.vid_index)}};
     g.appendChild(d);
   });
 }
+function toggleEp(n){selectedEps.has(n)?selectedEps.delete(n):selectedEps.add(n);renderEpGrid()}
 function selectAll(s){selectedEps=s?new Set(episodes.map(e=>e.vid_index)):new Set();renderEpGrid()}
 function selectRange(a,b){const n=episodes.length,s=a>0?a-1:n+a,e=b>0?b:n+b;for(let i=s;i<=e;i++)selectedEps.add(i+1);renderEpGrid()}
 

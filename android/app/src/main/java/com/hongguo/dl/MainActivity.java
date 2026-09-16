@@ -339,45 +339,21 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public String getFfmpegPath() {
-            File ffmpeg = new File(getFilesDir(), "bin/ffmpeg");
-            if (ffmpeg.exists()) return ffmpeg.getAbsolutePath();
-            try {
-                File binDir = new File(getFilesDir(), "bin");
-                File libDir = new File(binDir, "lib");
-                binDir.mkdirs(); libDir.mkdirs();
-                extractAsset("bin/ffmpeg", ffmpeg);
-                ffmpeg.setExecutable(true, false);
-                String[] libs = getAssets().list("bin/lib");
-                if (libs != null) {
-                    for (String lib : libs) {
-                        extractAsset("bin/lib/" + lib, new File(libDir, lib));
-                    }
-                }
-                return ffmpeg.getAbsolutePath();
-            } catch (Exception e) { return ""; }
-        }
-
-        private void extractAsset(String assetPath, File outFile) throws Exception {
-            InputStream is = getAssets().open(assetPath);
-            FileOutputStream fos = new FileOutputStream(outFile);
-            byte[] buf = new byte[8192];
-            int n;
-            while ((n = is.read(buf)) != -1) fos.write(buf, 0, n);
-            fos.close(); is.close();
+            String nativeDir = getApplicationInfo().nativeLibraryDir;
+            File ffmpeg = new File(nativeDir, "libffmpeg.so");
+            return ffmpeg.exists() ? ffmpeg.getAbsolutePath() : "";
         }
 
         @JavascriptInterface
         public void downloadFfmpeg(String callbackId) {
-            executor.execute(() -> {
-                String path = getFfmpegPath();
-                if (!path.isEmpty()) {
-                    runOnUiThread(() -> webView.evaluateJavascript(
-                        "window.onFfmpegDownloaded && onFfmpegDownloaded('" + path + "')", null));
-                } else {
-                    runOnUiThread(() -> webView.evaluateJavascript(
-                        "window.onFfmpegError && onFfmpegError('内置ffmpeg解压失败')", null));
-                }
-            });
+            String path = getFfmpegPath();
+            if (!path.isEmpty()) {
+                runOnUiThread(() -> webView.evaluateJavascript(
+                    "window.onFfmpegDownloaded && onFfmpegDownloaded('" + path + "')", null));
+            } else {
+                runOnUiThread(() -> webView.evaluateJavascript(
+                    "window.onFfmpegError && onFfmpegError('ffmpeg未找到')", null));
+            }
         }
 
         @JavascriptInterface
@@ -396,28 +372,9 @@ public class MainActivity extends Activity {
                     FileOutputStream lfos = new FileOutputStream(listFile);
                     lfos.write(list.toString().getBytes());
                     lfos.close();
-                    File libDir = new File(getFilesDir(), "bin/lib");
-                    // Create symlinks: libavcodec.so.62.28.102 -> libavcodec.so.62
-                    File[] libs = libDir.listFiles();
-                    if (libs != null) {
-                        for (File lib : libs) {
-                            String name = lib.getName();
-                            // libavcodec.so.62.28.102 -> libavcodec.so.62
-                            String[] parts = name.split("\\.");
-                            if (parts.length >= 4) {
-                                String linkName = parts[0] + "." + parts[1] + "." + parts[2];
-                                File link = new File(libDir, linkName);
-                                if (!link.exists()) {
-                                    try {
-                                        Runtime.getRuntime().exec(new String[]{"ln", "-sf", name, link.getAbsolutePath()}).waitFor();
-                                    } catch (Exception ignored) {}
-                                }
-                            }
-                        }
-                    }
-                    String ldLibPath = libDir.getAbsolutePath();
+                    String nativeDir = getApplicationInfo().nativeLibraryDir;
                     Process p = Runtime.getRuntime().exec(new String[]{"sh", "-c",
-                        "LD_LIBRARY_PATH=" + ldLibPath + " " +
+                        "LD_LIBRARY_PATH=" + nativeDir + " " +
                         ffmpeg + " -y -f concat -safe 0 -i '" + listFile.getAbsolutePath() + "' -c copy '" + outPath + "' 2>&1"});
                     BufferedReader br = new BufferedReader(new InputStreamReader(p.getInputStream()));
                     StringBuilder errOut = new StringBuilder();
