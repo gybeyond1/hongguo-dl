@@ -464,8 +464,7 @@ public class MainActivity extends Activity {
                         }
                         if (videoTrack >= 0) extractor.selectTrack(videoTrack);
                         if (audioTrack >= 0) extractor.selectTrack(audioTrack);
-                        // Seek to first keyframe
-                        if (videoTrack >= 0) extractor.seekTo(0, android.media.MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
+                        // Just read from start, no seek needed for MP4
 
                         android.media.MediaCodec.BufferInfo info = new android.media.MediaCodec.BufferInfo();
                         long lastPts = 0;
@@ -481,7 +480,12 @@ public class MainActivity extends Activity {
                             if (trackIdx == videoTrack) muxTrack = videoMuxTrack;
                             else if (trackIdx == audioTrack) muxTrack = audioMuxTrack;
                             if (muxTrack >= 0 && info.size > 0) {
-                                muxer.writeSampleData(muxTrack, buffer, info);
+                                try {
+                                    muxer.writeSampleData(muxTrack, buffer, info);
+                                } catch (Exception we) {
+                                    dbg("writeSampleData failed: track=" + trackIdx + " size=" + sampleSize + " pts=" + info.presentationTimeUs + " flags=" + info.flags + " err=" + we.getMessage());
+                                    throw we;
+                                }
                             }
                             if (info.presentationTimeUs > lastPts) lastPts = info.presentationTimeUs;
                             extractor.advance();
