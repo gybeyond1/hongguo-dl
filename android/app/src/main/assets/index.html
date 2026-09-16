@@ -92,10 +92,10 @@ button.sm{padding:5px 10px;font-size:12px;border-radius:6px}
 <div class="settings-panel" id="settingsPanel">
   <div class="settings-box">
     <h2>⚙️ NAS 连接</h2>
-    <input id="setHost" placeholder="NAS 地址 (如 192.168.31.76)">
-    <input id="setPort" placeholder="端口 (如 8800)">
-    <input id="setPwd" type="password" placeholder="访问密码">
+    <input id="setHost" placeholder="NAS 地址 (如 http://192.168.31.76:8800)">
+    <input id="setPwd" type="password" placeholder="访问密钥">
     <div class="row">
+      <button class="sec" style="flex:1" onclick="testConnection()">测试连接</button>
       <button style="flex:1" onclick="saveSettings()">保存</button>
       <button class="sec" style="flex:1" onclick="closeSettings()">关闭</button>
     </div>
@@ -110,7 +110,7 @@ const MODEL_BIZ_PARAM={detail_page_version:0,device_level:3,disable_digg_stat:fa
 
 let episodes=[],currentSeriesId='',selectedEps=new Set(),downloadDir='/sdcard/Download/HG_Download';
 let currentTitle='',currentCover='';
-let cloudHost='',cloudPort='8800',cloudPwd='',downloadTarget='local';
+let cloudHost='',cloudPwd='',downloadTarget='local';
 let httpCallbackId=0,httpCallbacks={};
 let fileDlId=0,fileCallbacks={};
 
@@ -218,7 +218,7 @@ function renderEpGrid(){
       dragTimer=setTimeout(()=>{
         dragActive=true;
         toggleEp(ep.vid_index);
-      },200);
+      },300);
     });
     d.addEventListener('touchmove',e=>{
       if(!dragActive||dragStart==null)return;
@@ -263,7 +263,7 @@ async function startDownload(){
     try{
       const id='cb'+(++httpCallbackId);
       httpCallbacks[id]={resolve:()=>{},reject:()=>{}};
-      AndroidBridge.httpRequest(`http://${cloudHost}:${cloudPort}/api/download`,'POST',JSON.stringify({series_id:currentSeriesId,episodes:eps}),id);
+      AndroidBridge.httpRequest(`${cloudHost}/api/download`,'POST',JSON.stringify({series_id:currentSeriesId,episodes:eps}),id);
       // Save meta to local
       AndroidBridge.writeFile(downloadDir+'/'+currentSeriesId+'/.meta.json',JSON.stringify({source:'cloud',title:currentTitle,cover:currentCover}));
       AndroidBridge.toast('已提交到NAS');
@@ -335,18 +335,33 @@ function showSettings(){document.getElementById('settingsPanel').classList.add('
 function closeSettings(){document.getElementById('settingsPanel').classList.remove('show')}
 
 function onSettingsLoaded(host,port,pwd){
-  cloudHost=host||'';cloudPort=port||'8800';cloudPwd=pwd||'';
+  cloudHost=host||'';cloudPwd=pwd||'';
   document.getElementById('setHost').value=cloudHost;
-  document.getElementById('setPort').value=cloudPort;
   document.getElementById('setPwd').value=cloudPwd;
   if(cloudPwd&&window.AndroidBridge)AndroidBridge.setAuthToken(cloudPwd);
 }
 
+function testConnection(){
+  const host=document.getElementById('setHost').value.trim();
+  const pwd=document.getElementById('setPwd').value;
+  if(!host){AndroidBridge.toast('请先填写地址');return}
+  AndroidBridge.toast('正在测试...');
+  const rid='cb'+(++httpCallbackId);
+  httpCallbacks[rid]={
+    resolve:(r)=>{
+      try{const j=JSON.parse(r);AndroidBridge.toast(j.code===0?'连接成功':'连接失败: '+j.msg)}
+      catch(e){AndroidBridge.toast('连接失败: 响应格式错误')}
+    },
+    reject:(e)=>AndroidBridge.toast('连接失败: '+e)
+  };
+  AndroidBridge.setAuthToken(pwd);
+  AndroidBridge.httpRequest(host+'/api/config','GET','',rid);
+}
+
 function saveSettings(){
-  cloudHost=document.getElementById('setHost').value.trim();
-  cloudPort=document.getElementById('setPort').value.trim();
+  cloudHost=document.getElementById('setHost').value.trim().replace(/\/$/,'');
   cloudPwd=document.getElementById('setPwd').value;
-  AndroidBridge.saveSettings(cloudHost,cloudPort,cloudPwd);
+  AndroidBridge.saveSettings(cloudHost,'',cloudPwd);
   if(cloudPwd)AndroidBridge.setAuthToken(cloudPwd);
   closeSettings();
 }
@@ -418,7 +433,7 @@ function mergeDrama(id,source){
       AndroidBridge.toast('正在提交NAS合并...');
       const rid='cb'+(++httpCallbackId);
       httpCallbacks[rid]={resolve:()=>{AndroidBridge.toast('合并任务已提交');},reject:()=>{}};
-      AndroidBridge.httpRequest(`http://${cloudHost}:${cloudPort}/api/merge`,'POST',JSON.stringify({drama:id}),rid);
+      AndroidBridge.httpRequest(`${cloudHost}/api/merge`,'POST',JSON.stringify({drama:id}),rid);
     }
     return;
   }
