@@ -464,35 +464,27 @@ public class MainActivity extends Activity {
                         }
                         if (videoTrack >= 0) extractor.selectTrack(videoTrack);
                         if (audioTrack >= 0) extractor.selectTrack(audioTrack);
-                        // Just read from start, no seek needed for MP4
 
                         android.media.MediaCodec.BufferInfo info = new android.media.MediaCodec.BufferInfo();
                         long lastPts = 0;
-                        boolean seenFirstKeyframe = firstFile; // first file writes from start
                         long basePts = -1;
+                        // For subsequent files, seek to first video keyframe
+                        if (!firstFile && videoTrack >= 0) {
+                            extractor.seekTo(0, android.media.MediaExtractor.SEEK_TO_CLOSEST_SYNC);
+                            basePts = extractor.getSampleTime();
+                            dbg("  seekTo keyframe, basePts=" + basePts);
+                        }
                         while (true) {
                             int sampleSize = extractor.readSampleData(buffer, 0);
                             if (sampleSize < 0) break;
                             long rawPts = extractor.getSampleTime();
-                            int trackIdx = extractor.getSampleTrackIndex();
-                            int flags = extractor.getSampleFlags();
-                            // For subsequent files, skip until first video keyframe
-                            if (!seenFirstKeyframe) {
-                                if (trackIdx == videoTrack && (flags & android.media.MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0) {
-                                    seenFirstKeyframe = true;
-                                    basePts = rawPts; // normalize from this point
-                                    dbg("  found keyframe, rawPts=" + rawPts);
-                                } else {
-                                    extractor.advance();
-                                    continue;
-                                }
-                            }
                             if (basePts < 0) basePts = rawPts;
                             info.offset = 0;
                             info.size = sampleSize;
                             info.presentationTimeUs = rawPts - basePts + totalDuration;
                             if (info.presentationTimeUs < 0) info.presentationTimeUs = 0;
-                            info.flags = flags;
+                            info.flags = extractor.getSampleFlags();
+                            int trackIdx = extractor.getSampleTrackIndex();
                             int muxTrack = -1;
                             if (trackIdx == videoTrack) muxTrack = videoMuxTrack;
                             else if (trackIdx == audioTrack) muxTrack = audioMuxTrack;
