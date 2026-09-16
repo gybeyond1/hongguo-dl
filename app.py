@@ -380,21 +380,69 @@ def merge_episodes(req: MergeRequest):
                 if proc.returncode != 0:
                     with merge_lock:
                         merge_tasks[req.drama]["status"] = "error"
-                        merge_tasks[req.drama]["logs"].append("❌ 合并失败")
+                        merge_tasks[req.drama]["logs"].append("❌ 合并失败: ffmpeg 返回错误")
                     return
 
-                # 合并成功，删除单集文件
+                # 验证合并结果
+                if not os.path.exists(output_path):
+                    with merge_lock:
+                        merge_tasks[req.drama]["status"] = "error"
+                        merge_tasks[req.drama]["logs"].append("❌ 合并失败: 输出文件不存在")
+                    return
+
+                out_size = os.path.getsize(output_path)
+                if out_size < 1000000:
+                    with merge_lock:
+                        merge_tasks[req.drama]["status"] = "error"
+                        merge_tasks[req.drama]["logs"].append(f"❌ 合并失败: 输出文件太小 ({out_size} bytes)")
+                    return
+
+                # ffprobe 验证视频有效性
+                probe = subprocess.run(
+                    ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                     "-of", "csv=p=0", output_path],
+                    capture_output=True, text=True, timeout=30
+                )
+                if probe.returncode != 0:
+                    with merge_lock:
+                        merge_tasks[req.drama]["status"] = "error"
+                        merge_tasks[req.drama]["logs"].append("❌ 合并失败: ffprobe 无法识别输出文件")
+                    return
+
+                try:
+                    out_duration = float(probe.stdout.strip())
+                except ValueError:
+                    out_duration = 0
+
+                # 计算所有单集总时长
+                total_input_size = sum(fp.stat().st_size for fp in mp4_files)
+                # 粗略校验：输出大小不应小于输入总和的 50%（同编码 copy 应该差不多）
+                size_ratio = out_size / total_input_size if total_input_size > 0 else 0
+                with merge_lock:
+                    merge_tasks[req.drama]["logs"].append(
+                        f"📊 合并结果: {len(mp4_files)}集, 输入{round(total_input_size/1024/1024,1)}MB → 输出{round(out_size/1024/1024,1)}MB, 时长{round(out_duration/60,1)}分钟"
+                    )
+
+                if size_ratio < 0.3:
+                    with merge_lock:
+                        merge_tasks[req.drama]["status"] = "error"
+                        merge_tasks[req.drama]["logs"].append(f"❌ 合并异常: 输出仅为输入的{round(size_ratio*100,1)}%，保留单集文件")
+                    return
+
+                # 验证通过，删除单集文件
+                deleted = 0
                 for fp in mp4_files:
                     try:
                         os.remove(fp)
+                        deleted += 1
                     except Exception:
                         pass
 
-                size_mb = round(os.path.getsize(output_path) / 1024 / 1024, 1)
+                size_mb = round(out_size / 1024 / 1024, 1)
                 with merge_lock:
                     merge_tasks[req.drama]["status"] = "done"
                     merge_tasks[req.drama]["done"] = len(mp4_files)
-                    merge_tasks[req.drama]["logs"].append(f"✅ 合并完成: {size_mb}MB")
+                    merge_tasks[req.drama]["logs"].append(f"✅ 合并完成: 删除了{deleted}个单集文件")
             except Exception as e:
                 with merge_lock:
                     merge_tasks[req.drama]["status"] = "error"
