@@ -185,9 +185,10 @@ public class MainActivity extends Activity {
                     runOnUiThread(() -> webView.evaluateJavascript(
                         "window.onFileDownloaded && onFileDownloaded('" + fpath + "')", null));
                 } catch (Exception e) {
+                    final String fcid = cid;
                     final String msg = e.getMessage().replace("\\", "\\\\").replace("'", "\\'");
                     runOnUiThread(() -> webView.evaluateJavascript(
-                        "window.onFileError && onFileError('" + msg + "')", null));
+                        "window.onFileError && onFileError('" + fcid + "','" + msg + "')", null));
                 }
             });
         }
@@ -213,6 +214,8 @@ public class MainActivity extends Activity {
                     conn.setConnectTimeout(15000);
                     conn.setReadTimeout(120000);
                     conn.connect();
+                    int respCode = conn.getResponseCode();
+                    if (respCode != 200) throw new Exception("HTTP " + respCode);
                     InputStream is = conn.getInputStream();
                     FileOutputStream fos = new FileOutputStream(tmpFile);
                     byte[] buf = new byte[8192];
@@ -228,9 +231,10 @@ public class MainActivity extends Activity {
                     runOnUiThread(() -> webView.evaluateJavascript(
                         "window.onFileDownloaded && onFileDownloaded('" + fpath + "')", null));
                 } catch (Exception e) {
+                    final String fcid = cid;
                     final String msg = e.getMessage().replace("\\", "\\\\").replace("'", "\\'");
                     runOnUiThread(() -> webView.evaluateJavascript(
-                        "window.onFileError && onFileError('" + msg + "')", null));
+                        "window.onFileError && onFileError('" + fcid + "','" + msg + "')", null));
                 }
             });
         }
@@ -511,6 +515,7 @@ public class MainActivity extends Activity {
                         "window.onMergeDone && onMergeDone('" + callbackId + "',0,'')", null));
                 } catch (Exception e) {
                     dbg("Merge error: " + e.getMessage());
+                    final String fcid = cid;
                     final String msg = e.getMessage().replace("\\", "\\\\").replace("'", "\\'");
                     runOnUiThread(() -> webView.evaluateJavascript(
                         "window.onMergeDone && onMergeDone('" + callbackId + "',-1,'" + msg + "')", null));

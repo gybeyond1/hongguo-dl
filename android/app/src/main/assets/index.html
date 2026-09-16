@@ -177,8 +177,8 @@ window.onHttpError=(id,msg)=>{
 window.onFileDownloaded=(path)=>{
   for(const fid in fileCallbacks){if(fileCallbacks[fid].path===path){fileCallbacks[fid].res();delete fileCallbacks[fid]}}
 };
-window.onFileError=(msg)=>{
-  for(const fid in fileCallbacks){fileCallbacks[fid].rej(new Error(msg));delete fileCallbacks[fid]}
+window.onFileError=(cid,msg)=>{
+  if(fileCallbacks[cid]){fileCallbacks[cid].rej(new Error(msg));delete fileCallbacks[cid]}
 };
 
 async function resolveSeriesId(url){
