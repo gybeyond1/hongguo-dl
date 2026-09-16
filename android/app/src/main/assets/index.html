@@ -368,19 +368,7 @@ function mergeDrama(id,source){
     }
     return;
   }
-  // Local
-  const ffmpegPath=AndroidBridge.getFfmpegPath();
-  if(!ffmpegPath){
-    if(confirm('本地合并需要下载ffmpeg组件（约30MB），是否下载？')){
-      AndroidBridge.toast('正在下载ffmpeg...');
-      AndroidBridge.downloadFfmpeg('ff');
-    }
-    return;
-  }
-  if(confirm('确认在本地合并为MP4？')){
-    AndroidBridge.toast('开始合并...');
-    AndroidBridge.mergeVideos(downloadDir+'/'+id, downloadDir+'/'+id+'.mp4', 'mg'+Date.now());
-  }
+  AndroidBridge.toast('本地合并需NAS，请在设置配置NAS');
 }
 </script>
 </body>
