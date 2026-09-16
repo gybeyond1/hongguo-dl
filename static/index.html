@@ -326,6 +326,7 @@ let selectedEps = new Set();
 let pollTimer = null;
 let authToken = localStorage.getItem('authToken') || '';
 let mergePollTimers = {};
+let dramaData = {};
 
 async function apiFetch(url, options = {}) {
   options.headers = options.headers || {};
@@ -447,8 +448,10 @@ async function loadTasks() {
       const pct = t.total > 0 ? Math.round(t.done / t.total * 100) : 0;
       const statusText = t.status === 'running' ? '下载中' : (t.status === 'done' ? '已完成' : '失败');
       const title = t.title || ('任务 ' + t.task_id);
-      const errHtml = (t.errors && t.errors.length)
-        ? `<div style="margin-top:6px">${t.errors.slice(0,5).map(e => '<div class="error-line">❌ ' + e + '</div>').join('')}${t.errors.length > 5 ? `<div style="color:#888;font-size:11px;margin-top:4px">还有 ${t.errors.length - 5} 个错误...</div>` : ''}</div>`
+      const errs = t.errors || [];
+      const failedEps = errs.map(e => { const m = e.match(/第(\d+)集/); return m ? parseInt(m[1]) : null; }).filter(Boolean);
+      const errHtml = errs.length
+        ? `<div style="margin-top:6px">${errs.slice(0,5).map(e => '<div class="error-line">❌ ' + e + '</div>').join('')}${errs.length > 5 ? `<div style="color:#888;font-size:11px;margin-top:4px">还有 ${errs.length - 5} 个错误...</div>` : ''}${failedEps.length && t.status === 'error' ? `<button class="sm" style="margin-top:6px;background:var(--orange)" onclick="retryTask('${t.task_id}', '${t.series_id}', [${failedEps.join(',')}])">🔄 重试失败集数 (${failedEps.length})</button>` : ''}</div>`
         : '';
       return `<div class="task-item">
         <div class="task-top">
@@ -486,7 +489,22 @@ async function deleteFile(drama, filename) {
 }
 
 async function mergeDrama(name) {
-  if (!confirm(`合并《${name}》所有集数为一个视频？合并后会自动删除单集文件。`)) return;
+  const d = dramaData[name];
+  if (d && d.missing > 0) {
+    const list = d.missing_list || [];
+    let ranges = [];
+    if (list.length) {
+      let s = list[0], p = list[0];
+      for (let i = 1; i < list.length; i++) {
+        if (list[i] === p + 1) p = list[i];
+        else { ranges.push(s === p ? s + '' : s + '-' + p); s = p = list[i]; }
+      }
+      ranges.push(s === p ? s + '' : s + '-' + p);
+    }
+    if (!confirm(`《${name}》还有 ${d.missing} 集未下载完成：\n${ranges.join('、')}\n\n仍要继续合并吗？（只会合并已下载的集数）`)) return;
+  } else {
+    if (!confirm(`合并《${name}》所有集数为一个视频？合并后会自动删除单集文件。`)) return;
+  }
   const r = await apiFetch('/api/merge', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({drama: name})});
   const d = await r.json();
   if (d.code !== 0) { alert('合并失败: ' + d.msg); return; }
@@ -520,6 +538,16 @@ function pollMergeStatus(name) {
       }
     } catch(e) {}
   }, 1500);
+}
+
+async function retryTask(taskId, seriesId, eps) {
+  if (!seriesId) { alert('无法获取剧集ID'); return; }
+  const r = await apiFetch('/api/download', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({series_id: seriesId, episodes: eps})});
+  const j = await r.json();
+  if (j.code !== 0) { alert('重试失败: ' + j.msg); return; }
+  // Clear old task
+  await apiFetch('/api/tasks/' + taskId, {method: 'DELETE'});
+  startPoll();
 }
 
 function toggleMissing(name) {
@@ -570,7 +598,11 @@ async function loadFiles() {
       </div>`;
     }).join('');
     window._missingData = {};
-    d.data.forEach(d => { window._missingData[d.name] = d.missing_list || []; });
+    dramaData = {};
+    d.data.forEach(d => {
+      window._missingData[d.name] = d.missing_list || [];
+      dramaData[d.name] = d;
+    });
   } catch(e) {}
 }
 
