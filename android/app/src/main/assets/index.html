@@ -312,6 +312,7 @@ async function startDownload(){
       AndroidBridge.writeFile(downloadDir+'/'+currentSeriesId+'/.meta.json',JSON.stringify({source:'cloud',title:currentTitle,cover:currentCover}));
       AndroidBridge.toast('已提交到NAS');
       document.getElementById('progressText').textContent='已提交到NAS处理';
+      setTimeout(()=>showDownloaded(),2000);
     }catch(e){AndroidBridge.toast('云端请求失败: '+e.message)}
     return;
   }
@@ -392,13 +393,20 @@ function testConnection(){
   if(!host){AndroidBridge.toast('请先填写地址');return}
   dbg('testConnection: '+host);
   AndroidBridge.toast('正在测试...');
+  AndroidBridge.setAuthToken(pwd);
   const rid='cb'+(++httpCallbackId);
   httpCallbacks[rid]={
-    resolve:(r)=>{dbg('testConnection resp: '+r.slice(0,200));AndroidBridge.toast('响应: '+r.slice(0,80));},
+    resolve:(r)=>{
+      try{
+        const j=JSON.parse(r.text);
+        if(j.code===0){AndroidBridge.toast('连接成功，NAS上有'+(j.data?j.data.length:0)+'部剧')}
+        else if(j.code===-1){AndroidBridge.toast('连接成功但密钥错误')}
+        else{AndroidBridge.toast('响应: '+r.text.slice(0,80))}
+      }catch(e){AndroidBridge.toast('响应: '+r.text.slice(0,80))}
+    },
     reject:(e)=>{dbg('testConnection err: '+e);AndroidBridge.toast('连接失败: '+e)}
   };
-  AndroidBridge.setAuthToken(pwd);
-  AndroidBridge.httpRequest(host+'/api/config','GET','',rid);
+  AndroidBridge.httpRequest(host+'/api/files','GET','',rid);
 }
 
 function saveSettings(){
@@ -426,6 +434,7 @@ async function showDownloaded(){
   card.classList.remove('hidden');
   const list=document.getElementById('downloadedList');
   try{
+    // Local items
     const dirs=JSON.parse(AndroidBridge.listDir(downloadDir));
     const items=dirs.filter(d=>d.isDir).map(d=>{
       const files=JSON.parse(AndroidBridge.listDir(downloadDir+'/'+d.name));
@@ -435,6 +444,20 @@ async function showDownloaded(){
       if(metaFile){try{const m=JSON.parse(AndroidBridge.readFile(downloadDir+'/'+d.name+'/.meta.json'));source=m.source||'local';title=m.title||d.name;cover=m.cover||''}catch(e){}}
       return {id:d.name,count:mps.length,size:mps.reduce((s,f)=>s+f.size,0),source,title,cover};
     }).filter(x=>x.count>0);
+
+    // Cloud items
+    if(cloudHost){
+      try{
+        const r=await httpGet(cloudHost+'/api/files');
+        const j=JSON.parse(r.text);
+        if(j.code===0&&j.data){
+          for(const c of j.data){
+            items.push({id:c.name,count:c.count,size:(c.size_mb||0)*1048576,source:'cloud',title:c.title||c.name,cover:c.cover||''});
+          }
+        }
+      }catch(e){dbg('cloud files error: '+e.message)}
+    }
+
     if(!items.length){list.innerHTML='<div style="color:var(--dim)">暂无下载</div>';return}
     list.innerHTML=items.map(it=>`
       <div style="background:var(--input);padding:12px;border-radius:8px;margin-bottom:8px;display:flex;gap:10px">
@@ -447,18 +470,24 @@ async function showDownloaded(){
           <div style="color:var(--dim);font-size:12px;margin-top:4px">${it.count}集 · ${(it.size/1048576).toFixed(1)}MB</div>
           <div style="display:flex;gap:8px;margin-top:8px">
             ${it.source==='cloud'?`<button class="sm" style="background:var(--green)" onclick="mergeDrama('${it.id}','cloud')">🔗 合并</button>`:''}
-            <button class="sm" style="background:#e74c3c" onclick="deleteDrama('${it.id}')">🗑 删除</button>
+            <button class="sm" style="background:#e74c3c" onclick="deleteDrama('${it.id}','${it.source}')">🗑 删除</button>
           </div>
         </div>
       </div>`).join('');
   }catch(e){list.innerHTML='<div class="error-box">读取失败: '+e.message+'</div>'}
 }
 
-function deleteDrama(id){
+function deleteDrama(id,source){
   if(!confirm('确认删除这部剧的所有文件？'))return;
-  AndroidBridge.deleteDrama(downloadDir+'/'+id);
-  AndroidBridge.toast('已删除');
-  showDownloaded();
+  if(source==='cloud'&&cloudHost){
+    const rid='cb'+(++httpCallbackId);
+    httpCallbacks[rid]={resolve:()=>{AndroidBridge.toast('已删除');showDownloaded()},reject:()=>{AndroidBridge.toast('删除失败');showDownloaded()}};
+    AndroidBridge.httpRequest(cloudHost+'/api/delete','POST',JSON.stringify({drama:id}),rid);
+  }else{
+    AndroidBridge.deleteDrama(downloadDir+'/'+id);
+    AndroidBridge.toast('已删除');
+    showDownloaded();
+  }
 }
 
 window.onMergeDone=(cid,code,msg)=>{
