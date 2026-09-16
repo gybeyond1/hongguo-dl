@@ -215,6 +215,57 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public String listDir(String path) {
+            try {
+                File dir = new File(path);
+                if (!dir.exists()) return "[]";
+                File[] files = dir.listFiles();
+                if (files == null) return "[]";
+                StringBuilder sb = new StringBuilder("[");
+                for (int i = 0; i < files.length; i++) {
+                    if (i > 0) sb.append(",");
+                    File f = files[i];
+                    sb.append("{\"name\":\"").append(f.getName().replace("\"", "\\\""));
+                    sb.append("\",\"isDir\":").append(f.isDirectory());
+                    sb.append(",\"size\":").append(f.length()).append("}");
+                }
+                sb.append("]");
+                return sb.toString();
+            } catch (Exception e) { return "[]"; }
+        }
+
+        @JavascriptInterface
+        public void mergeVideos(String dirPath, String outPath, String callbackId) {
+            executor.execute(() -> {
+                try {
+                    File dir = new File(dirPath);
+                    File[] files = dir.listFiles((d, name) -> name.endsWith(".mp4"));
+                    if (files == null || files.length == 0) throw new Exception("无mp4文件");
+                    java.util.Arrays.sort(files, (a, b) -> a.getName().compareTo(b.getName()));
+                    StringBuilder list = new StringBuilder();
+                    for (File f : files) list.append("file '").append(f.getAbsolutePath()).append("'\n");
+                    File listFile = new File(dir, "filelist.txt");
+                    FileOutputStream lfos = new FileOutputStream(listFile);
+                    lfos.write(list.toString().getBytes());
+                    lfos.close();
+                    Process p = Runtime.getRuntime().exec(new String[]{"sh", "-c",
+                        "ffmpeg -y -f concat -safe 0 -i '" + listFile.getAbsolutePath() + "' -c copy '" + outPath + "'"});
+                    int code = p.waitFor();
+                    String err = new String(p.getErrorStream().readAllBytes());
+                    if (code == 0) listFile.delete();
+                    final int fc = code;
+                    final String msg = err.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n");
+                    runOnUiThread(() -> webView.evaluateJavascript(
+                        "window.onMergeDone && onMergeDone('" + callbackId + "'," + fc + ",'" + msg + "')", null));
+                } catch (Exception e) {
+                    final String msg = e.getMessage().replace("\\", "\\\\").replace("'", "\\'");
+                    runOnUiThread(() -> webView.evaluateJavascript(
+                        "window.onMergeDone && onMergeDone('" + callbackId + "',-1,'" + msg + "')", null));
+                }
+            });
+        }
+
+        @JavascriptInterface
         public void httpRequest(String url, String method, String body, String callbackId) {
             executor.execute(() -> {
                 try {
