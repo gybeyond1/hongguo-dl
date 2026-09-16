@@ -2,69 +2,266 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>红果短剧下载器</title>
 <style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: -apple-system, sans-serif; background: #0f0f1a; color: #e0e0e0; min-height: 100vh; }
-.container { max-width: 900px; margin: 0 auto; padding: 20px; }
-h1 { text-align: center; color: #e94560; margin: 20px 0; font-size: 28px; }
-h3 { color: #e94560; margin-bottom: 10px; }
-.card { background: #1a1a2e; border-radius: 12px; padding: 20px; margin-bottom: 16px; }
-input, button { padding: 12px 16px; border: none; border-radius: 8px; font-size: 14px; }
-input { background: #16213e; color: #fff; flex: 1; outline: none; }
-button { background: #e94560; color: #fff; cursor: pointer; font-weight: 600; }
-button:hover { opacity: 0.85; }
-button.secondary { background: #0f3460; }
-button.danger { background: #c0392b; padding: 6px 12px; font-size: 12px; }
-button.small { padding: 6px 12px; font-size: 12px; }
-.row { display: flex; gap: 10px; margin-bottom: 12px; }
-.ep-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 8px; margin-top: 12px; }
-.ep { background: #16213e; padding: 10px; text-align: center; border-radius: 8px; cursor: pointer; border: 2px solid transparent; font-size: 13px; }
-.ep.selected { border-color: #e94560; background: #1a1a3e; }
-.info { display: flex; align-items: center; gap: 16px; }
-.cover { width: 120px; border-radius: 8px; }
-.ep-title { font-size: 18px; font-weight: 700; }
-.ep-meta { color: #888; font-size: 13px; margin-top: 4px; }
-.hidden { display: none; }
-.btn-group { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
-.error { color: #ff6b6b; padding: 6px 10px; background: #2a1a1a; border-radius: 6px; margin: 4px 0; font-size: 12px; }
-.drama-item { padding: 12px; border-bottom: 1px solid #333; }
-.drama-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 8px; }
-.drama-info { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
-.drama-cover { width: 48px; height: 64px; border-radius: 6px; object-fit: cover; flex-shrink: 0; background: #16213e; }
-.drama-text { min-width: 0; flex: 1; }
-.drama-name { font-weight: 700; }
-.drama-meta { color: #888; font-size: 12px; margin-top: 2px; }
-.drama-actions { display: flex; gap: 8px; flex-shrink: 0; }
-.file-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; margin-top: 8px; }
-.file-chip { background: #16213e; padding: 6px 10px; border-radius: 6px; font-size: 12px; display: flex; justify-content: space-between; align-items: center; }
-.file-chip button { padding: 2px 6px; font-size: 11px; }
+:root {
+  --bg: #0f0f1a;
+  --card: #1a1a2e;
+  --card-hover: #1f1f3a;
+  --input: #16213e;
+  --accent: #e94560;
+  --accent-light: #ff6b9d;
+  --blue: #0f3460;
+  --green: #2ecc71;
+  --orange: #ff9f43;
+  --red: #ff6b6b;
+  --text: #e0e0e0;
+  --text-dim: #888;
+  --border: #2a2a4a;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  padding-bottom: 40px;
+}
+.container { max-width: 860px; margin: 0 auto; padding: 16px; }
 
-/* 缺集展开 */
-.missing-toggle { color: #ff9f43; cursor: pointer; text-decoration: underline; }
-.missing-detail { margin: 8px 0; padding: 10px; background: #16213e; border-radius: 8px; font-size: 12px; color: #ccc; line-height: 1.8; max-height: 200px; overflow-y: auto; }
+/* Header */
+.app-header { text-align: center; padding: 24px 0 16px; }
+.app-header h1 { font-size: 24px; color: var(--accent); font-weight: 800; letter-spacing: 1px; }
+.app-header p { color: var(--text-dim); font-size: 13px; margin-top: 4px; }
 
-/* 进度面板 */
-.task-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #2a2a4a; }
-.task-row:last-child { border-bottom: none; }
-.task-summary { flex: 1; min-width: 0; }
+/* Cards */
+.card {
+  background: var(--card);
+  border-radius: 16px;
+  padding: 18px;
+  margin-bottom: 14px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+.card-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Input & Buttons */
+input, button {
+  padding: 12px 16px;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+}
+input {
+  background: var(--input);
+  color: #fff;
+  flex: 1;
+  min-width: 0;
+}
+input::placeholder { color: #555; }
+button {
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  font-weight: 600;
+  transition: opacity 0.15s, transform 0.1s;
+  white-space: nowrap;
+}
+button:active { transform: scale(0.97); }
+button:hover { opacity: 0.88; }
+button.secondary { background: var(--blue); }
+button.danger { background: #c0392b; }
+button.sm { padding: 6px 12px; font-size: 12px; border-radius: 8px; }
+
+/* Search row */
+.search-row { display: flex; gap: 8px; }
+.search-row input { border-radius: 10px; }
+
+/* Info card (drama detail) */
+.drama-header-info { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 14px; }
+.drama-cover-lg { width: 90px; border-radius: 10px; flex-shrink: 0; aspect-ratio: 3/4; object-fit: cover; background: var(--input); }
+.drama-detail { flex: 1; min-width: 0; }
+.drama-detail h2 { font-size: 18px; font-weight: 700; line-height: 1.3; }
+.drama-detail .meta { color: var(--text-dim); font-size: 13px; margin-top: 6px; }
+
+/* Button groups */
+.btn-row { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0; }
+
+/* Episode grid */
+.ep-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+  gap: 6px;
+  margin-top: 12px;
+}
+.ep {
+  background: var(--input);
+  padding: 10px 4px;
+  text-align: center;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 2px solid transparent;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.15s;
+}
+.ep:active { transform: scale(0.95); }
+.ep.selected { border-color: var(--accent); background: rgba(233,69,96,0.15); color: var(--accent-light); }
+
+/* Download button */
+.dl-btn { width: 100%; padding: 14px; font-size: 15px; border-radius: 10px; margin-top: 14px; }
+
+/* Tasks panel */
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+}
+.panel-header h3 { margin: 0; font-size: 15px; }
+.panel-arrow { color: var(--text-dim); font-size: 13px; transition: transform 0.2s; }
+.panel-arrow.open { transform: rotate(90deg); }
+
+.task-item { padding: 10px 0; border-bottom: 1px solid var(--border); }
+.task-item:last-child { border-bottom: none; }
+.task-top { display: flex; justify-content: space-between; align-items: center; }
 .task-name { font-weight: 600; font-size: 14px; }
-.task-detail { color: #888; font-size: 12px; margin-top: 2px; }
-.task-bar { background: #16213e; border-radius: 4px; height: 6px; margin-top: 6px; overflow: hidden; }
-.task-bar-fill { background: linear-gradient(90deg, #e94560, #ff6b9d); height: 100%; transition: width 0.3s; }
-.task-status { font-size: 12px; margin-left: 10px; flex-shrink: 0; }
-.task-status.running { color: #2ecc71; }
-.task-status.done { color: #2ecc71; }
-.task-status.error { color: #ff6b6b; }
+.task-meta { color: var(--text-dim); font-size: 12px; margin-top: 2px; }
+.task-bar {
+  background: var(--input);
+  border-radius: 4px;
+  height: 5px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+.task-bar-fill {
+  background: linear-gradient(90deg, var(--accent), var(--accent-light));
+  height: 100%;
+  transition: width 0.3s;
+  border-radius: 4px;
+}
+.badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+.badge.running { background: rgba(46,204,113,0.15); color: var(--green); }
+.badge.done { background: rgba(46,204,113,0.15); color: var(--green); }
+.badge.error { background: rgba(255,107,107,0.15); color: var(--red); }
 
-/* 登录遮罩 */
-#loginOverlay { position: fixed; inset: 0; background: rgba(15,15,26,0.97); display: flex; align-items: center; justify-content: center; z-index: 999; }
-#loginOverlay .login-box { background: #1a1a2e; padding: 40px; border-radius: 16px; text-align: center; width: 320px; }
-#loginOverlay h2 { color: #e94560; margin-bottom: 20px; }
-#loginOverlay input { width: 100%; margin-bottom: 12px; }
-#loginOverlay button { width: 100%; }
-#loginError { color: #ff6b6b; margin-top: 10px; font-size: 13px; }
+.error-line {
+  color: var(--red);
+  padding: 5px 8px;
+  background: rgba(192,57,43,0.1);
+  border-radius: 6px;
+  margin: 4px 0;
+  font-size: 11px;
+}
+
+/* Downloaded list */
+.drama-row {
+  display: flex;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  align-items: flex-start;
+}
+.drama-row:last-child { border-bottom: none; }
+.drama-thumb {
+  width: 44px;
+  height: 60px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: var(--input);
+}
+.drama-body { flex: 1; min-width: 0; }
+.drama-title { font-weight: 700; font-size: 14px; line-height: 1.3; }
+.drama-sub { color: var(--text-dim); font-size: 12px; margin-top: 3px; }
+.tag { font-size: 11px; padding: 1px 6px; border-radius: 4px; margin-left: 4px; }
+.tag-ok { background: rgba(46,204,113,0.15); color: var(--green); }
+.tag-warn { background: rgba(255,159,67,0.15); color: var(--orange); cursor: pointer; }
+.tag-warn:hover { text-decoration: underline; }
+.drama-btns { display: flex; gap: 6px; flex-shrink: 0; flex-direction: column; }
+
+.file-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 5px;
+  margin-top: 8px;
+}
+.file-chip {
+  background: var(--input);
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 4px;
+}
+.file-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-chip button { padding: 2px 6px; font-size: 10px; border-radius: 4px; }
+
+.expand-box {
+  margin: 6px 0;
+  padding: 10px;
+  background: var(--input);
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.8;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.expand-box pre { white-space: pre-wrap; font-size: 11px; color: #aaa; margin: 0; }
+
+/* Login */
+#loginOverlay {
+  position: fixed; inset: 0;
+  background: rgba(15,15,26,0.97);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 999;
+}
+.login-box {
+  background: var(--card);
+  padding: 36px 28px;
+  border-radius: 16px;
+  text-align: center;
+  width: min(320px, 90vw);
+}
+.login-box h2 { color: var(--accent); margin-bottom: 20px; font-size: 20px; }
+.login-box input { width: 100%; margin-bottom: 12px; }
+.login-box button { width: 100%; padding: 13px; }
+#loginError { color: var(--red); margin-top: 10px; font-size: 13px; }
+
+.hidden { display: none !important; }
+
+/* Desktop tweaks */
+@media (min-width: 768px) {
+  .container { padding: 24px; }
+  .card { padding: 22px; }
+  .ep-grid { grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 8px; }
+  .drama-cover-lg { width: 120px; }
+  .drama-detail h2 { font-size: 20px; }
+}
+
+/* Mobile tweaks */
+@media (max-width: 480px) {
+  .container { padding: 10px; }
+  .card { padding: 14px; border-radius: 12px; }
+  .app-header h1 { font-size: 20px; }
+  .ep-grid { grid-template-columns: repeat(auto-fill, minmax(48px, 1fr)); gap: 5px; }
+  .ep { padding: 8px 2px; font-size: 12px; }
+  .file-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
+  .drama-btns { flex-direction: row; }
+}
 </style>
 </head>
 <body>
@@ -79,45 +276,45 @@ button.small { padding: 6px 12px; font-size: 12px; }
 </div>
 
 <div class="container">
-<h1>🎬 红果短剧下载器</h1>
+<div class="app-header">
+  <h1>🎬 红果短剧下载器</h1>
+</div>
 
 <div class="card">
-  <div class="row">
-    <input id="urlInput" placeholder="粘贴分享链接">
+  <div class="search-row">
+    <input id="urlInput" placeholder="粘贴分享链接，如 https://novelquickapp.com/s/xxx">
     <button onclick="parseDrama()">解析</button>
   </div>
 </div>
 
 <div id="infoCard" class="card hidden">
-  <div class="info">
-    <img id="cover" class="cover" src="">
-    <div>
-      <div class="ep-title" id="dramaTitle"></div>
-      <div class="ep-meta" id="dramaMeta"></div>
+  <div class="drama-header-info">
+    <img id="cover" class="drama-cover-lg" src="" onerror="this.style.display='none'">
+    <div class="drama-detail">
+      <h2 id="dramaTitle"></h2>
+      <div class="meta" id="dramaMeta"></div>
     </div>
   </div>
-  <div class="btn-group">
-    <button class="secondary small" onclick="selectAll(true)">全选</button>
-    <button class="secondary small" onclick="selectAll(false)">全不选</button>
-    <button class="secondary small" onclick="selectRange(1,10)">前10集</button>
-    <button class="secondary small" onclick="selectRange(-30,-1)">后30集</button>
+  <div class="btn-row">
+    <button class="secondary sm" onclick="selectAll(true)">全选</button>
+    <button class="secondary sm" onclick="selectAll(false)">取消全选</button>
+    <button class="secondary sm" onclick="selectRange(1,10)">前10集</button>
+    <button class="secondary sm" onclick="selectRange(-30,-1)">后30集</button>
   </div>
   <div class="ep-grid" id="epGrid"></div>
-  <div class="row" style="margin-top:16px">
-    <button onclick="startDownload()">开始下载选中集数</button>
-  </div>
+  <button class="dl-btn" onclick="startDownload()">⬇️ 开始下载选中集数</button>
 </div>
 
 <div id="progressCard" class="card hidden">
-  <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="toggleTaskPanel()">
-    <h3 style="margin:0">📊 下载任务</h3>
-    <span id="taskToggle" style="color:#888;font-size:14px">▶</span>
+  <div class="panel-header" onclick="toggleTaskPanel()">
+    <h3>📊 下载任务</h3>
+    <span class="panel-arrow open" id="taskToggle">▶</span>
   </div>
-  <div id="taskBody" class="hidden"></div>
+  <div id="taskBody"></div>
 </div>
 
 <div class="card">
-  <h3>已下载文件</h3>
+  <div class="card-title">📁 已下载</div>
   <div id="fileList"></div>
 </div>
 </div>
@@ -128,7 +325,7 @@ let currentSeriesId = '';
 let selectedEps = new Set();
 let pollTimer = null;
 let authToken = localStorage.getItem('authToken') || '';
-let runningTaskId = null;
+let mergePollTimers = {};
 
 async function apiFetch(url, options = {}) {
   options.headers = options.headers || {};
@@ -147,16 +344,14 @@ async function checkConfig() {
   if (!d.need_auth) {
     document.getElementById('loginOverlay').style.display = 'none';
     init();
-  } else {
-    if (authToken) {
-      try {
-        await apiFetch('/api/files');
-        document.getElementById('loginOverlay').style.display = 'none';
-        init();
-      } catch(e) {
-        authToken = '';
-        localStorage.removeItem('authToken');
-      }
+  } else if (authToken) {
+    try {
+      await apiFetch('/api/files');
+      document.getElementById('loginOverlay').style.display = 'none';
+      init();
+    } catch(e) {
+      authToken = '';
+      localStorage.removeItem('authToken');
     }
   }
 }
@@ -176,10 +371,7 @@ async function doLogin() {
   }
 }
 
-function init() {
-  loadFiles();
-  loadTasks();
-}
+function init() { loadFiles(); loadTasks(); }
 
 async function parseDrama() {
   const url = document.getElementById('urlInput').value.trim();
@@ -194,7 +386,11 @@ async function parseDrama() {
     selectedEps = new Set(episodes.map(e => e.vid_index));
     document.getElementById('dramaTitle').textContent = info.series_title;
     document.getElementById('dramaMeta').textContent = `共 ${episodes.length} 集`;
-    if (info.cover) document.getElementById('cover').src = info.cover;
+    if (info.cover) {
+      const c = document.getElementById('cover');
+      c.src = info.cover;
+      c.style.display = '';
+    }
     renderEpGrid();
     document.getElementById('infoCard').classList.remove('hidden');
   } catch(e) { alert('错误: ' + e.message); }
@@ -228,16 +424,13 @@ async function startDownload() {
   const resp = await apiFetch('/api/download', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({series_id: currentSeriesId, episodes: eps})});
   const j = await resp.json();
   if (j.code !== 0) { alert('下载启动失败: ' + j.msg); return; }
-  runningTaskId = j.task_id;
   document.getElementById('progressCard').classList.remove('hidden');
   startPoll();
 }
 
 function startPoll() {
   if (pollTimer) clearInterval(pollTimer);
-  pollTimer = setInterval(() => {
-    loadTasks();
-  }, 2000);
+  pollTimer = setInterval(loadTasks, 2000);
 }
 
 async function loadTasks() {
@@ -248,48 +441,36 @@ async function loadTasks() {
     const tasks = d.data;
     const card = document.getElementById('progressCard');
     const body = document.getElementById('taskBody');
-
-    if (tasks.length === 0) {
-      card.classList.add('hidden');
-      return;
-    }
+    if (tasks.length === 0) { card.classList.add('hidden'); return; }
     card.classList.remove('hidden');
-
     body.innerHTML = tasks.map(t => {
       const pct = t.total > 0 ? Math.round(t.done / t.total * 100) : 0;
       const statusText = t.status === 'running' ? '下载中' : (t.status === 'done' ? '已完成' : '失败');
-      const title = t.title || (t.series_id ? '任务 ' + t.task_id : '任务');
+      const title = t.title || ('任务 ' + t.task_id);
       const errHtml = (t.errors && t.errors.length)
-        ? `<div style="margin-top:6px">${t.errors.slice(0,5).map(e => '<div class="error">❌ ' + e + '</div>').join('')}${t.errors.length > 5 ? `<div style="color:#888;font-size:11px;margin-top:4px">还有 ${t.errors.length - 5} 个错误...</div>` : ''}</div>`
+        ? `<div style="margin-top:6px">${t.errors.slice(0,5).map(e => '<div class="error-line">❌ ' + e + '</div>').join('')}${t.errors.length > 5 ? `<div style="color:#888;font-size:11px;margin-top:4px">还有 ${t.errors.length - 5} 个错误...</div>` : ''}</div>`
         : '';
-      return `<div class="task-row">
-        <div class="task-summary">
-          <div class="task-name">${title}</div>
-          <div class="task-detail">${t.done}/${t.total} · ${t.current || ''} ${t.started_at || ''}</div>
-          <div class="task-bar"><div class="task-bar-fill" style="width:${pct}%"></div></div>
-          ${errHtml}
+      return `<div class="task-item">
+        <div class="task-top">
+          <div>
+            <div class="task-name">${title}</div>
+            <div class="task-meta">${t.done}/${t.total} · ${t.current || ''}</div>
+          </div>
+          <span class="badge ${t.status}">${statusText}</span>
         </div>
-        <div class="task-status ${t.status}">${statusText}</div>
+        <div class="task-bar"><div class="task-bar-fill" style="width:${pct}%"></div></div>
+        ${errHtml}
       </div>`;
     }).join('');
-
-    // 如果有完成的任务，刷新文件列表
-    if (tasks.some(t => t.status === 'done' || t.status === 'error')) {
-      loadFiles();
-    }
+    if (tasks.some(t => t.status === 'done' || t.status === 'error')) loadFiles();
   } catch(e) {}
 }
 
 function toggleTaskPanel() {
   const body = document.getElementById('taskBody');
   const toggle = document.getElementById('taskToggle');
-  if (body.classList.contains('hidden')) {
-    body.classList.remove('hidden');
-    toggle.textContent = '▼';
-  } else {
-    body.classList.add('hidden');
-    toggle.textContent = '▶';
-  }
+  const open = body.classList.toggle('hidden');
+  toggle.classList.toggle('open', !open);
 }
 
 async function deleteDrama(name) {
@@ -304,14 +485,11 @@ async function deleteFile(drama, filename) {
   loadFiles();
 }
 
-let mergePollTimers = {};
-
 async function mergeDrama(name) {
   if (!confirm(`合并《${name}》所有集数为一个视频？合并后会自动删除单集文件。`)) return;
   const r = await apiFetch('/api/merge', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({drama: name})});
   const d = await r.json();
   if (d.code !== 0) { alert('合并失败: ' + d.msg); return; }
-  // 展开合并日志
   const logEl = document.getElementById('mergelog_' + name);
   if (logEl) {
     logEl.classList.remove('hidden');
@@ -330,26 +508,18 @@ function pollMergeStatus(name) {
       const t = d.data;
       const logEl = document.getElementById('mergelog_' + name);
       if (!logEl) { clearInterval(mergePollTimers[name]); return; }
-      if (t.status === 'none') {
-        clearInterval(mergePollTimers[name]);
-        return;
-      }
+      if (t.status === 'none') { clearInterval(mergePollTimers[name]); return; }
       const logText = (t.logs || []).slice(-20).join('\n');
-      const statusBadge = t.status === 'running' ? '<span style="color:#2ecc71">合并中...</span>' :
-                          t.status === 'done' ? '<span style="color:#2ecc71">✅ 合并完成</span>' :
-                          '<span style="color:#ff6b6b">❌ 失败</span>';
-      logEl.innerHTML = `<div style="margin-bottom:4px">${statusBadge}</div><pre style="white-space:pre-wrap;font-size:11px;color:#aaa;max-height:150px;overflow-y:auto;margin:0">${logText}</pre>`;
+      const badge = t.status === 'running' ? '<span class="badge running">合并中...</span>' :
+                    t.status === 'done' ? '<span class="badge done">✅ 合并完成</span>' :
+                    '<span class="badge error">❌ 失败</span>';
+      logEl.innerHTML = `<div style="margin-bottom:4px">${badge}</div><pre>${logText}</pre>`;
       if (t.status === 'done' || t.status === 'error') {
         clearInterval(mergePollTimers[name]);
-        setTimeout(() => loadFiles(), 1000);
+        setTimeout(loadFiles, 1000);
       }
     } catch(e) {}
   }, 1500);
-}
-
-function toggleMergeLog(name) {
-  const el = document.getElementById('mergelog_' + name);
-  if (el) el.classList.toggle('hidden');
 }
 
 function toggleMissing(name) {
@@ -357,24 +527,17 @@ function toggleMissing(name) {
   if (el.classList.contains('hidden')) {
     const list = window._missingData[name] || [];
     if (list.length > 0) {
-      // 智能分组连续区间
       let ranges = [];
       let start = list[0], prev = list[0];
       for (let i = 1; i < list.length; i++) {
-        if (list[i] === prev + 1) {
-          prev = list[i];
-        } else {
-          ranges.push(start === prev ? start + '' : start + '-' + prev);
-          start = prev = list[i];
-        }
+        if (list[i] === prev + 1) prev = list[i];
+        else { ranges.push(start === prev ? start + '' : start + '-' + prev); start = prev = list[i]; }
       }
       ranges.push(start === prev ? start + '' : start + '-' + prev);
-      el.innerHTML = `<div style="color:#ff9f43;margin-bottom:4px">缺 ${list.length} 集：</div><div style="color:#ccc">${ranges.join('、')}</div>`;
+      el.innerHTML = `<div style="color:var(--orange);margin-bottom:4px">缺 ${list.length} 集：</div><div style="color:#ccc">${ranges.join('、')}</div>`;
     }
     el.classList.remove('hidden');
-  } else {
-    el.classList.add('hidden');
-  }
+  } else el.classList.add('hidden');
 }
 
 async function loadFiles() {
@@ -382,35 +545,27 @@ async function loadFiles() {
     const r = await apiFetch('/api/files');
     const d = await r.json();
     const el = document.getElementById('fileList');
-    if (d.data.length === 0) { el.innerHTML = '<div style="color:#666">暂无下载</div>'; return; }
+    if (d.data.length === 0) { el.innerHTML = '<div style="color:#555;text-align:center;padding:20px">暂无下载</div>'; return; }
     el.innerHTML = d.data.map(drama => {
-      let statusHtml = '';
-      if (drama.merged) {
-        statusHtml = ' · <span style="color:#2ecc71">✓ 已合并为全集</span>';
-      } else if (drama.missing > 0) {
-        statusHtml = ` · <span class="missing-toggle" onclick="toggleMissing('${drama.name}')">缺${drama.missing}集 ▾</span>`;
-      } else if (drama.total_episodes && drama.count >= drama.total_episodes) {
-        statusHtml = ' · <span style="color:#2ecc71">✓ 已下完</span>';
-      }
-      const mergeBtn = drama.merged ? '' : `<button class="small secondary" onclick="mergeDrama('${drama.name}')">合并全集</button>`;
-      return `<div class="drama-item">
-        <div class="drama-header">
-          <div class="drama-info">
-            ${drama.cover ? `<img class="drama-cover" src="${drama.cover}" loading="lazy">` : ''}
-            <div class="drama-text">
-              <div class="drama-name">📁 ${drama.title || drama.name}</div>
-              <div class="drama-meta">${drama.count}集 · ${drama.size_mb}MB${drama.total_episodes ? ` · 共${drama.total_episodes}集` : ''}${statusHtml}</div>
-            </div>
-          </div>
-          <div class="drama-actions">
-            ${mergeBtn}
-            <button class="small danger" onclick="deleteDrama('${drama.name}')">删除</button>
+      let tags = '';
+      if (drama.merged) tags = '<span class="tag tag-ok">已合并</span>';
+      else if (drama.missing > 0) tags = `<span class="tag tag-warn" onclick="toggleMissing('${drama.name}')">缺${drama.missing}集 ▾</span>`;
+      else if (drama.total_episodes && drama.count >= drama.total_episodes) tags = '<span class="tag tag-ok">✓ 已下完</span>';
+      const mergeBtn = drama.merged ? '' : `<button class="sm secondary" onclick="mergeDrama('${drama.name}')">合并</button>`;
+      return `<div class="drama-row">
+        ${drama.cover ? `<img class="drama-thumb" src="${drama.cover}" loading="lazy">` : ''}
+        <div class="drama-body">
+          <div class="drama-title">${drama.title || drama.name}</div>
+          <div class="drama-sub">${drama.count}集 · ${drama.size_mb}MB${drama.total_episodes ? ` · 共${drama.total_episodes}集` : ''} ${tags}</div>
+          <div id="missing_${drama.name}" class="hidden expand-box"></div>
+          <div id="mergelog_${drama.name}" class="hidden expand-box"></div>
+          <div class="file-grid">
+            ${drama.files.map(f => `<div class="file-chip"><span title="${f}">${f}</span><button onclick="deleteFile('${drama.name}','${f}')">✕</button></div>`).join('')}
           </div>
         </div>
-        <div id="missing_${drama.name}" class="hidden missing-detail"></div>
-        <div id="mergelog_${drama.name}" class="hidden" style="margin:8px 0;padding:10px;background:#16213e;border-radius:8px"></div>
-        <div class="file-grid">
-          ${drama.files.map(f => `<div class="file-chip"><span>${f}</span><button onclick="deleteFile('${drama.name}','${f}')">✕</button></div>`).join('')}
+        <div class="drama-btns">
+          ${mergeBtn}
+          <button class="sm danger" onclick="deleteDrama('${drama.name}')">删除</button>
         </div>
       </div>`;
     }).join('');
