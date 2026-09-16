@@ -43,7 +43,10 @@ jobs:
       - name: Delete existing release v1.0
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release delete v1.0 --yes 2>/dev/null || true
+        run: |
+          gh release delete v1.0 --yes 2>/dev/null || true
+          git tag -d v1.0 2>/dev/null || true
+          git push origin :refs/tags/v1.0 2>/dev/null || true
 
       - name: Create release v1.0
         env:
@@ -52,7 +55,12 @@ jobs:
           gh release create v1.0 \
             --title "红果短剧下载器 v1.0" \
             --notes "红果短剧下载器" \
-            --target main \
-            hongguo-dl.apk \
-            hongguo-dl-docker.tar.gz \
-            docker-compose.yml
+            --target main
+
+      - name: Upload assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload v1.0 hongguo-dl.apk --clobber
+          gh release upload v1.0 hongguo-dl-docker.tar.gz --clobber
+          gh release upload v1.0 docker-compose.yml --clobber
