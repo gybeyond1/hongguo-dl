@@ -28,12 +28,14 @@ jobs:
         with:
           gradle-version: '8.2'
 
-      - name: Build APK
+      - name: Build APKs
         working-directory: android
-        run: gradle assembleDebug --no-daemon
+        run: gradle assembleFullDebug assembleNasDebug --no-daemon
 
-      - name: Rename APK
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk hongguo-dl.apk
+      - name: Rename APKs
+        run: |
+          cp android/app/build/outputs/apk/full/debug/app-full-debug.apk hongguo-dl-quan.apk
+          cp android/app/build/outputs/apk/nas/debug/app-nas-debug.apk hongguo-dl-nas.apk
 
       - name: Pull Docker image and save as tar
         run: |
@@ -61,6 +63,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload v1.0 hongguo-dl.apk --clobber
+          gh release upload v1.0 hongguo-dl-quan.apk --clobber
+          gh release upload v1.0 hongguo-dl-nas.apk --clobber
           gh release upload v1.0 hongguo-dl-docker.tar.gz --clobber
           gh release upload v1.0 docker-compose.yml --clobber
