@@ -375,11 +375,17 @@ async function downloadEps(eps,dramaDir){
 }
 
 function retryEp(idx){
-  AndroidBridge.toast('重试第'+idx+'集...');
+  const failedEps=[];
+  document.querySelectorAll('#errorList .error-box').forEach(box=>{
+    const m=box.textContent.match(/第(\d+)集/);
+    if(m)failedEps.push(parseInt(m[1]));
+  });
+  const eps=failedEps.length?failedEps:[idx];
+  AndroidBridge.toast('重试'+eps.length+'个失败集数...');
   document.getElementById('errorList').innerHTML='';
   const safeTitle=(currentTitle||currentSeriesId).replace(/[\\/:*?"<>|]/g,'_');
   const dramaDir=downloadDir+'/'+safeTitle;
-  downloadEps([idx],dramaDir);
+  downloadEps(eps,dramaDir);
 }
 
 function showSettings(){document.getElementById('settingsPanel').classList.add('show')}
