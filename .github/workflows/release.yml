@@ -33,7 +33,7 @@ jobs:
         run: gradle assembleFullDebug --no-daemon
 
       - name: Rename APK
-        run: cp android/app/build/outputs/apk/full/debug/app-full-debug.apk 红果短剧下载.apk
+        run: cp android/app/build/outputs/apk/full/debug/app-full-debug.apk hongguo-dl.apk
 
       - name: Pull Docker image and save as tar
         run: |
@@ -61,5 +61,5 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload v1.0 红果短剧下载.apk --clobber
+          gh release upload v1.0 hongguo-dl.apk --clobber
           gh release upload v1.0 hongguo-dl-docker.tar.gz --clobber
