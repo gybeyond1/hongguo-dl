@@ -17,6 +17,7 @@ import android.webkit.WebViewClient;
 import android.widget.Toast;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
@@ -207,6 +208,42 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void deleteFile(String path) {
             new File(path).delete();
+        }
+
+        @JavascriptInterface
+        public String readFile(String path) {
+            try {
+            File f = new File(path);
+            if (!f.exists()) return "";
+            byte[] data = new byte[(int) f.length()];
+            FileInputStream fis = new FileInputStream(f);
+            fis.read(data); fis.close();
+            return new String(data, "UTF-8");
+        } catch (Exception e) { return ""; }
+        }
+
+        @JavascriptInterface
+        public void writeFile(String path, String content) {
+            try {
+                File f = new File(path);
+                f.getParentFile().mkdirs();
+                FileOutputStream fos = new FileOutputStream(f);
+                fos.write(content.getBytes("UTF-8"));
+                fos.close();
+            } catch (Exception e) {}
+        }
+
+        @JavascriptInterface
+        public String runCommandSync(String cmd) {
+            try {
+                Process p = Runtime.getRuntime().exec(new String[]{"sh", "-c", cmd});
+                p.waitFor();
+                InputStream is = p.getInputStream();
+                byte[] buf = new byte[4096];
+                int n; StringBuilder sb = new StringBuilder();
+                while ((n = is.read(buf)) != -1) sb.append(new String(buf, 0, n));
+                return sb.toString();
+            } catch (Exception e) { return ""; }
         }
 
         @JavascriptInterface
