@@ -468,12 +468,16 @@ public class MainActivity extends Activity {
 
                         android.media.MediaCodec.BufferInfo info = new android.media.MediaCodec.BufferInfo();
                         long lastPts = 0;
+                        long basePts = -1;
                         while (true) {
                             int sampleSize = extractor.readSampleData(buffer, 0);
                             if (sampleSize < 0) break;
+                            long rawPts = extractor.getSampleTime();
+                            if (basePts < 0) basePts = rawPts;
                             info.offset = 0;
                             info.size = sampleSize;
-                            info.presentationTimeUs = extractor.getSampleTime() + totalDuration;
+                            info.presentationTimeUs = rawPts - basePts + totalDuration;
+                            if (info.presentationTimeUs < 0) info.presentationTimeUs = 0;
                             info.flags = extractor.getSampleFlags();
                             int trackIdx = extractor.getSampleTrackIndex();
                             int muxTrack = -1;
@@ -483,7 +487,7 @@ public class MainActivity extends Activity {
                                 try {
                                     muxer.writeSampleData(muxTrack, buffer, info);
                                 } catch (Exception we) {
-                                    dbg("writeSampleData failed: track=" + trackIdx + " size=" + sampleSize + " pts=" + info.presentationTimeUs + " flags=" + info.flags + " err=" + we.getMessage());
+                                    dbg("writeSampleData failed: track=" + trackIdx + " size=" + sampleSize + " pts=" + info.presentationTimeUs + " flags=" + info.flags);
                                     throw we;
                                 }
                             }
