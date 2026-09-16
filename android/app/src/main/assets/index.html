@@ -343,10 +343,20 @@ async function showDownloaded(){
             <span style="font-size:11px;padding:2px 6px;border-radius:4px;background:${it.source==='cloud'?'rgba(46,204,113,.2)':'rgba(52,152,219,.2)'};color:${it.source==='cloud'?'#2ecc71':'#3498db'}">${it.source==='cloud'?'☁️ NAS':'📱 本地'}</span>
           </div>
           <div style="color:var(--dim);font-size:12px;margin-top:4px">${it.count}集 · ${(it.size/1048576).toFixed(1)}MB</div>
-          <button class="sm" style="margin-top:8px;background:var(--green)" onclick="mergeDrama('${it.id}','${it.source}')">🔗 合并为MP4</button>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button class="sm" style="background:var(--green)" onclick="mergeDrama('${it.id}','${it.source}')">🔗 合并</button>
+            <button class="sm" style="background:#e74c3c" onclick="deleteDrama('${it.id}')">🗑 删除</button>
+          </div>
         </div>
       </div>`).join('');
   }catch(e){list.innerHTML='<div class="error-box">读取失败: '+e.message+'</div>'}
+}
+
+function deleteDrama(id){
+  if(!confirm('确认删除这部剧的所有文件？'))return;
+  AndroidBridge.deleteDrama(downloadDir+'/'+id);
+  AndroidBridge.toast('已删除');
+  showDownloaded();
 }
 
 window.onMergeDone=(cid,code,msg)=>{

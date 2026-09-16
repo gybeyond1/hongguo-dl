@@ -128,10 +128,24 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public String getDownloadDir() {
-            File dir = getExternalFilesDir("HG_Download");
-            if (dir == null) dir = new File(getFilesDir(), "HG_Download");
+            File dir = new File(android.os.Environment.getExternalStoragePublicDirectory(
+                android.os.Environment.DIRECTORY_DOWNLOADS), "HG_Download");
             dir.mkdirs();
             return dir.getAbsolutePath();
+        }
+
+        @JavascriptInterface
+        public void deleteDrama(String path) {
+            try {
+                File f = new File(path);
+                if (f.isDirectory()) {
+                    File[] files = f.listFiles();
+                    if (files != null) for (File c : files) c.delete();
+                    f.delete();
+                } else {
+                    f.delete();
+                }
+            } catch (Exception e) {}
         }
 
         @JavascriptInterface
