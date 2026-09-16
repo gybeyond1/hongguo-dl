@@ -345,13 +345,11 @@ public class HongguoDecrypt {
                 p += esize;
             }
             // stsd header
-            ByteArrayOutputStream full = new ByteArrayOutputStream();
-            full.write(data, box.off, content + 8 - box.off);
-            // update count
+            int hdrLen = content + 8 - box.off;
             byte[] entries = result.toByteArray();
-            byte[] fullResult = new byte[8 + entries.length];
-            System.arraycopy(data, box.off, fullResult, 0, content + 8 - box.off);
-            System.arraycopy(entries, 0, fullResult, content + 8 - box.off, entries.length);
+            byte[] fullResult = new byte[hdrLen + entries.length];
+            System.arraycopy(data, box.off, fullResult, 0, hdrLen);
+            System.arraycopy(entries, 0, fullResult, hdrLen, entries.length);
             putInt32(fullResult, 0, fullResult.length);
             putInt32(fullResult, 12, count);
             patches.put(box.off, fullResult);

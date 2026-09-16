@@ -19,7 +19,7 @@ android {
         full {
             dimension "version"
             applicationId "com.hongguo.dl"
-            resValue "string", "app_name", "红果下载器-全端"
+            resValue "string", "app_name", "红果下载器"
         }
         nas {
             dimension "version"
