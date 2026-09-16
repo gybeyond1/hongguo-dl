@@ -291,9 +291,9 @@ public class MainActivity extends Activity {
                     File binDir = new File(getFilesDir(), "bin");
                     binDir.mkdirs();
                     File ffmpeg = new File(binDir, "ffmpeg");
-                    String url = "https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v6.0/ffmpeg-6.0-android-arm64-gpl.tar.gz";
+                    String url = "https://gh-proxy.com/https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v6.0/ffmpeg-6.0-android-arm64-gpl.tar.gz";
                     if (android.os.Build.SUPPORTED_ABIS[0].contains("x86")) {
-                        url = "https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v6.0/ffmpeg-6.0-android-x86_64-gpl.tar.gz";
+                        url = "https://gh-proxy.com/https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v6.0/ffmpeg-6.0-android-x86_64-gpl.tar.gz";
                     }
                     HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
                     conn.connect();
