@@ -359,25 +359,28 @@ window.onFfmpegError=(msg)=>{AndroidBridge.toast('ffmpeg下载失败: '+msg);};
 
 function mergeDrama(id,source){
   if(source==='cloud'){
-    // Cloud: call NAS
     if(!cloudHost){AndroidBridge.toast('请先配置NAS');return}
-    AndroidBridge.toast('正在提交NAS合并...');
-    const rid='cb'+(++httpCallbackId);
-    httpCallbacks[rid]={resolve:()=>{AndroidBridge.toast('合并任务已提交');},reject:()=>{}};
-    AndroidBridge.httpRequest(`http://${cloudHost}:${cloudPort}/api/merge`,'POST',JSON.stringify({drama:id}),rid);
+    if(confirm('确认提交到NAS合并？')){
+      AndroidBridge.toast('正在提交NAS合并...');
+      const rid='cb'+(++httpCallbackId);
+      httpCallbacks[rid]={resolve:()=>{AndroidBridge.toast('合并任务已提交');},reject:()=>{}};
+      AndroidBridge.httpRequest(`http://${cloudHost}:${cloudPort}/api/merge`,'POST',JSON.stringify({drama:id}),rid);
+    }
     return;
   }
-  // Local: check ffmpeg
+  // Local
   const ffmpegPath=AndroidBridge.getFfmpegPath();
   if(!ffmpegPath){
-    // Need to download ffmpeg
-    AndroidBridge.toast('需要下载ffmpeg模块');
-    AndroidBridge.downloadFfmpeg('ff');
+    if(confirm('本地合并需要下载ffmpeg组件（约30MB），是否下载？')){
+      AndroidBridge.toast('正在下载ffmpeg...');
+      AndroidBridge.downloadFfmpeg('ff');
+    }
     return;
   }
-  // Merge locally
-  AndroidBridge.toast('开始本地合并...');
-  AndroidBridge.mergeVideos(downloadDir+'/'+id, downloadDir+'/'+id+'.mp4', 'mg'+Date.now());
+  if(confirm('确认在本地合并为MP4？')){
+    AndroidBridge.toast('开始合并...');
+    AndroidBridge.mergeVideos(downloadDir+'/'+id, downloadDir+'/'+id+'.mp4', 'mg'+Date.now());
+  }
 }
 </script>
 </body>
