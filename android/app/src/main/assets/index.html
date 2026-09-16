@@ -233,6 +233,8 @@ async function startDownload(){
       const id='cb'+(++httpCallbackId);
       httpCallbacks[id]={resolve:()=>{},reject:()=>{}};
       AndroidBridge.httpRequest(`http://${cloudHost}:${cloudPort}/api/download`,'POST',JSON.stringify({series_id:currentSeriesId,episodes:eps}),id);
+      // Save meta to local
+      AndroidBridge.writeFile(downloadDir+'/'+currentSeriesId+'/.meta.json',JSON.stringify({source:'cloud'}));
       AndroidBridge.toast('已提交到NAS');
       document.getElementById('progressText').textContent='已提交到NAS处理';
     }catch(e){AndroidBridge.toast('云端请求失败: '+e.message)}
@@ -241,6 +243,7 @@ async function startDownload(){
 
   const dramaDir=downloadDir+'/'+currentSeriesId;
   AndroidBridge.runCommand('mkdir -p '+dramaDir,'mkdir');
+  AndroidBridge.writeFile(dramaDir+'/.meta.json',JSON.stringify({source:'local'}));
   let done=0,failed=[];
   for(const idx of eps){
     document.getElementById('progressText').textContent=`获取播放地址 ${done+1}/${eps.length} (第${idx}集)`;
@@ -321,14 +324,20 @@ async function showDownloaded(){
     const items=dirs.filter(d=>d.isDir).map(d=>{
       const files=JSON.parse(AndroidBridge.listDir(downloadDir+'/'+d.name));
       const mps=files.filter(f=>f.name.endsWith('.mp4'));
-      return {id:d.name,count:mps.length,size:mps.reduce((s,f)=>s+f.size,0)};
+      const metaFile=files.find(f=>f.name==='.meta.json');
+      let source='local';
+      if(metaFile){try{const m=JSON.parse(AndroidBridge.readFile(downloadDir+'/'+d.name+'/.meta.json'));source=m.source||'local'}catch(e){}}
+      return {id:d.name,count:mps.length,size:mps.reduce((s,f)=>s+f.size,0),source};
     }).filter(x=>x.count>0);
     if(!items.length){list.innerHTML='<div style="color:var(--dim)">暂无下载</div>';return}
     list.innerHTML=items.map(it=>`
       <div style="background:var(--input);padding:12px;border-radius:8px;margin-bottom:8px">
-        <div style="font-size:14px;font-weight:600">${it.id}</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="font-size:14px;font-weight:600;flex:1">${it.id}</div>
+          <span style="font-size:11px;padding:2px 6px;border-radius:4px;background:${it.source==='cloud'?'rgba(46,204,113,.2)':'rgba(52,152,219,.2)'};color:${it.source==='cloud'?'#2ecc71':'#3498db'}">${it.source==='cloud'?'☁️ NAS':'📱 本地'}</span>
+        </div>
         <div style="color:var(--dim);font-size:12px;margin-top:4px">${it.count}集 · ${(it.size/1048576).toFixed(1)}MB</div>
-        <button class="sm" style="margin-top:8px;background:var(--green)" onclick="mergeDrama('${it.id}')">🔗 合并为MP4</button>
+        <button class="sm" style="margin-top:8px;background:var(--green)" onclick="mergeDrama('${it.id}','${it.source}')">🔗 合并为MP4</button>
       </div>`).join('');
   }catch(e){list.innerHTML='<div class="error-box">读取失败: '+e.message+'</div>'}
 }
@@ -338,7 +347,24 @@ window.onMergeDone=(cid,code,msg)=>{
   else{AndroidBridge.toast('合并失败: '+msg.slice(0,100))}
 };
 
-function mergeDrama(id){
+function mergeDrama(id,source){
+  if(source==='cloud'&&cloudHost){
+    // Call NAS to merge
+    const rid='cb'+(++httpCallbackId);
+    httpCallbacks[rid]={resolve:()=>{},reject:()=>{}};
+    AndroidBridge.httpRequest(`http://${cloudHost}:${cloudPort}/api/merge`,'POST',JSON.stringify({series_id:id}),rid);
+    AndroidBridge.toast('已提交NAS合并');
+    return;
+  }
+  // Local: check ffmpeg
+  const r=AndroidBridge.runCommandSync('which ffmpeg');
+  if(!r||!r.trim()){
+    if(confirm('本地没有ffmpeg，合并功能需要安装ffmpeg。\n\n请安装Termux后运行:\npkg install ffmpeg\n\n是否仍要尝试？')){
+      AndroidBridge.mergeVideos(downloadDir+'/'+id, downloadDir+'/'+id+'.mp4', 'mg'+Date.now());
+      AndroidBridge.toast('开始合并...');
+    }
+    return;
+  }
   AndroidBridge.mergeVideos(downloadDir+'/'+id, downloadDir+'/'+id+'.mp4', 'mg'+Date.now());
   AndroidBridge.toast('开始合并...');
 }
