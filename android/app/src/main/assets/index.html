@@ -95,7 +95,8 @@ button.sm{padding:5px 10px;font-size:12px;border-radius:6px}
     <b style="color:#e94560">调试日志</b>
     <div>
       <button onclick="navigator.clipboard.writeText(document.getElementById('debugLog').innerText).then(()=>alert('已复制'))" style="background:#333;color:#fff;border:none;padding:4px 10px;border-radius:4px;font-size:11px;margin-right:4px">复制</button>
-      <button onclick="document.getElementById('debugLog').innerHTML=''" style="background:#333;color:#fff;border:none;padding:4px 10px;border-radius:4px;font-size:11px">清空</button>
+      <button onclick="document.getElementById('debugLog').innerHTML=''" style="background:#333;color:#fff;border:none;padding:4px 10px;border-radius:4px;font-size:11px;margin-right:6px">清空</button>
+    <button onclick="navigator.clipboard.writeText(document.getElementById('debugLog').innerText).then(()=>AndroidBridge.toast('日志已复制')).catch(()=>{})" style="background:#e94560;color:#fff;border:none;padding:4px 10px;border-radius:4px;font-size:11px">复制</button>
     </div>
   </div>
   <div id="debugLog"></div>
