@@ -194,7 +194,7 @@ async function parseDrama(){
     currentSeriesId=sid;
     selectedEps=new Set(episodes.map(e=>e.vid_index));
     currentTitle=vd.title||vd.book_name||vd.name||'未命名';
-    currentCover=vd.cover_url||vd.book_pic||v.cover||'';
+    currentCover=vd.cover_url||vd.book_pic||vd.cover||'';
     document.getElementById('dramaTitle').textContent=currentTitle;
     document.getElementById('dramaMeta').textContent=`共${episodes.length}集`;
     if(vd.cover_url){document.getElementById('cover').src=vd.cover_url;document.getElementById('cover').style.display=''}
