@@ -515,6 +515,7 @@ public class MainActivity extends Activity {
                         "window.onMergeDone && onMergeDone('" + callbackId + "',0,'')", null));
                 } catch (Exception e) {
                     dbg("Merge error: " + e.getMessage());
+                    new File(outPath).delete();
                     final String msg = e.getMessage().replace("\\", "\\\\").replace("'", "\\'");
                     runOnUiThread(() -> webView.evaluateJavascript(
                         "window.onMergeDone && onMergeDone('" + callbackId + "',-1,'" + msg + "')", null));

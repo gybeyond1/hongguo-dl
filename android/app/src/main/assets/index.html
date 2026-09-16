@@ -430,7 +430,7 @@ async function showDownloaded(){
     const dirs=JSON.parse(AndroidBridge.listDir(downloadDir));
     const items=dirs.filter(d=>d.isDir).map(d=>{
       const files=JSON.parse(AndroidBridge.listDir(downloadDir+'/'+d.name));
-      const mps=files.filter(f=>f.name.endsWith('.mp4'));
+      const mps=files.filter(f=>f.name.endsWith('.mp4') && !f.name.startsWith('_'));
       let source='local',title=d.name,cover='';
       const metaFile=files.find(f=>f.name==='.meta.json');
       if(metaFile){try{const m=JSON.parse(AndroidBridge.readFile(downloadDir+'/'+d.name+'/.meta.json'));source=m.source||'local';title=m.title||d.name;cover=m.cover||''}catch(e){}}
