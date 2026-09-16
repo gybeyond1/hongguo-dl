@@ -26,7 +26,7 @@ import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
 
-    private static final String UA = "Mozilla/5.0 (Linux; Android 9; SM-N9860) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
+    private static final String UA = "com.phoenix.read/71532 (Linux; U; Android 9; SM-N9860; Build/PQ3A.190705.10241111;tt-ok/3.12.13.20)";
     private WebView webView;
     private SharedPreferences prefs;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -209,14 +209,17 @@ public class MainActivity extends Activity {
                     conn.setRequestMethod(method);
                     conn.setRequestProperty("User-Agent", UA);
                     conn.setRequestProperty("Referer", "https://novelquickapp.com/");
-                    conn.setRequestProperty("Content-Type", "application/json");
+                    conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                    conn.setRequestProperty("Accept", "application/json; charset=utf-8,application/x-protobuf");
                     conn.setConnectTimeout(15000);
                     conn.setReadTimeout(30000);
+                    conn.setInstanceFollowRedirects(true);
                     if ("POST".equals(method) && body != null && !body.isEmpty()) {
                         conn.setDoOutput(true);
                         conn.getOutputStream().write(body.getBytes("UTF-8"));
                     }
                     int code = conn.getResponseCode();
+                    String finalUrl = conn.getURL().toString();
                     InputStream is = (code >= 200 && code < 400) ? conn.getInputStream() : conn.getErrorStream();
                     StringBuilder sb = new StringBuilder();
                     byte[] buf = new byte[4096];
@@ -225,8 +228,9 @@ public class MainActivity extends Activity {
                     String resp = sb.toString();
                     conn.disconnect();
                     String escaped = resp.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "");
+                    String escUrl = finalUrl.replace("\\", "\\\\").replace("'", "\\'");
                     runOnUiThread(() -> webView.evaluateJavascript(
-                        "window.onHttpResponse && onHttpResponse('" + callbackId + "'," + code + ",'" + escaped + "')", null));
+                        "window.onHttpResponse && onHttpResponse('" + callbackId + "'," + code + ",'" + escUrl + "','" + escaped + "')", null));
                 } catch (Exception e) {
                     String msg = e.getMessage().replace("\\", "\\\\").replace("'", "\\'");
                     runOnUiThread(() -> webView.evaluateJavascript(
