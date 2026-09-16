@@ -63,4 +63,3 @@ jobs:
         run: |
           gh release upload v1.0 红果短剧下载.apk --clobber
           gh release upload v1.0 hongguo-dl-docker.tar.gz --clobber
-          gh release upload v1.0 docker-compose.yml --clobber
