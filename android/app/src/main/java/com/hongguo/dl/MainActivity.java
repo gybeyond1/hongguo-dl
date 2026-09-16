@@ -280,46 +280,43 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public String getFfmpegPath() {
-            File f = new File(getFilesDir(), "bin/ffmpeg");
-            return f.exists() ? f.getAbsolutePath() : "";
+            File ffmpeg = new File(getFilesDir(), "bin/ffmpeg");
+            if (ffmpeg.exists()) return ffmpeg.getAbsolutePath();
+            try {
+                File binDir = new File(getFilesDir(), "bin");
+                File libDir = new File(binDir, "lib");
+                binDir.mkdirs(); libDir.mkdirs();
+                extractAsset("bin/ffmpeg", ffmpeg);
+                ffmpeg.setExecutable(true, false);
+                String[] libs = getAssets().list("bin/lib");
+                if (libs != null) {
+                    for (String lib : libs) {
+                        extractAsset("bin/lib/" + lib, new File(libDir, lib));
+                    }
+                }
+                return ffmpeg.getAbsolutePath();
+            } catch (Exception e) { return ""; }
+        }
+
+        private void extractAsset(String assetPath, File outFile) throws Exception {
+            InputStream is = getAssets().open(assetPath);
+            FileOutputStream fos = new FileOutputStream(outFile);
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = is.read(buf)) != -1) fos.write(buf, 0, n);
+            fos.close(); is.close();
         }
 
         @JavascriptInterface
         public void downloadFfmpeg(String callbackId) {
             executor.execute(() -> {
-                try {
-                    File binDir = new File(getFilesDir(), "bin");
-                    binDir.mkdirs();
-                    File ffmpeg = new File(binDir, "ffmpeg");
-                    String url = "https://gh-proxy.com/https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v6.0/ffmpeg-6.0-android-arm64-gpl.tar.gz";
-                    if (android.os.Build.SUPPORTED_ABIS[0].contains("x86")) {
-                        url = "https://gh-proxy.com/https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v6.0/ffmpeg-6.0-android-x86_64-gpl.tar.gz";
-                    }
-                    HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
-                    conn.connect();
-                    InputStream is = conn.getInputStream();
-                    File tmp = new File(getCacheDir(), "ffmpeg.tar.gz");
-                    FileOutputStream fos = new FileOutputStream(tmp);
-                    byte[] buf = new byte[8192];
-                    int n;
-                    while ((n = is.read(buf)) != -1) fos.write(buf, 0, n);
-                    fos.close(); is.close(); conn.disconnect();
-                    // Extract tar.gz
-                    Process p = Runtime.getRuntime().exec(new String[]{"sh", "-c",
-                        "cd " + binDir.getAbsolutePath() + " && tar xzf " + tmp.getAbsolutePath() + " && chmod +x ffmpeg"});
-                    p.waitFor();
-                    tmp.delete();
-                    if (ffmpeg.exists()) {
-                        runOnUiThread(() -> webView.evaluateJavascript(
-                            "window.onFfmpegDownloaded && onFfmpegDownloaded('" + ffmpeg.getAbsolutePath() + "')", null));
-                    } else {
-                        runOnUiThread(() -> webView.evaluateJavascript(
-                            "window.onFfmpegError && onFfmpegError('解压失败')", null));
-                    }
-                } catch (Exception e) {
-                    final String msg = e.getMessage().replace("\\", "\\\\").replace("'", "\\'");
+                String path = getFfmpegPath();
+                if (!path.isEmpty()) {
                     runOnUiThread(() -> webView.evaluateJavascript(
-                        "window.onFfmpegError && onFfmpegError('" + msg + "')", null));
+                        "window.onFfmpegDownloaded && onFfmpegDownloaded('" + path + "')", null));
+                } else {
+                    runOnUiThread(() -> webView.evaluateJavascript(
+                        "window.onFfmpegError && onFfmpegError('内置ffmpeg解压失败')", null));
                 }
             });
         }
@@ -340,7 +337,10 @@ public class MainActivity extends Activity {
                     FileOutputStream lfos = new FileOutputStream(listFile);
                     lfos.write(list.toString().getBytes());
                     lfos.close();
+                    File libDir = new File(getFilesDir(), "bin/lib");
+                    String ldLibPath = libDir.getAbsolutePath();
                     Process p = Runtime.getRuntime().exec(new String[]{"sh", "-c",
+                        "LD_LIBRARY_PATH=" + ldLibPath + ":$LD_LIBRARY_PATH " +
                         ffmpeg + " -y -f concat -safe 0 -i '" + listFile.getAbsolutePath() + "' -c copy '" + outPath + "'"});
                     int code = p.waitFor();
                     listFile.delete();
