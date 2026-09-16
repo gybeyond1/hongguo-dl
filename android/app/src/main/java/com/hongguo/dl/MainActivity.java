@@ -468,11 +468,23 @@ public class MainActivity extends Activity {
                         android.media.MediaCodec.BufferInfo info = new android.media.MediaCodec.BufferInfo();
                         long lastPts = 0;
                         long basePts = -1;
-                        // For subsequent files, seek to first video keyframe
+                        // For subsequent files, skip samples until first video keyframe
                         if (!firstFile && videoTrack >= 0) {
-                            extractor.seekTo(0, android.media.MediaExtractor.SEEK_TO_CLOSEST_SYNC);
-                            basePts = extractor.getSampleTime();
-                            dbg("  seekTo keyframe, basePts=" + basePts);
+                            boolean foundKf = false;
+                            while (!foundKf) {
+                                int ss = extractor.readSampleData(buffer, 0);
+                                if (ss < 0) break;
+                                int ti = extractor.getSampleTrackIndex();
+                                int fl = extractor.getSampleFlags();
+                                if (ti == videoTrack && (fl & android.media.MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0) {
+                                    basePts = extractor.getSampleTime();
+                                    foundKf = true;
+                                    dbg("  keyframe at rawPts=" + basePts);
+                                    // Don't advance - process this sample
+                                } else {
+                                    extractor.advance();
+                                }
+                            }
                         }
                         while (true) {
                             int sampleSize = extractor.readSampleData(buffer, 0);
