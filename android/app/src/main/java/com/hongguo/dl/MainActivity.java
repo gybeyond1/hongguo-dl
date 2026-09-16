@@ -31,7 +31,6 @@ public class MainActivity extends Activity {
     private WebView webView;
     private SharedPreferences prefs;
     private volatile String authToken = "";
-    private SharedPreferences prefs;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private String pendingShareText = null;
 
