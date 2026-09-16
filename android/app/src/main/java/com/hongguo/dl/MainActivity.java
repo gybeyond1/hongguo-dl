@@ -436,73 +436,35 @@ public class MainActivity extends Activity {
                     // Delete old merged file if exists
                     new File(outPath).delete();
 
-                    android.media.MediaMuxer muxer = new android.media.MediaMuxer(outPath, android.media.MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
-                    int videoMuxTrack = -1, audioMuxTrack = -1;
-                    long totalDuration = 0;
-                    boolean muxerStarted = false;
-                    boolean firstFile = true;
-                    java.nio.ByteBuffer buffer = java.nio.ByteBuffer.allocateDirect(2 * 1024 * 1024);
-
-                    for (int f = 0; f < files.length; f++) {
-                        dbg("Processing " + (f+1) + "/" + files.length + ": " + files[f].getName());
-                        android.media.MediaExtractor extractor = new android.media.MediaExtractor();
-                        extractor.setDataSource(files[f].getAbsolutePath());
-                        int videoTrack = -1, audioTrack = -1;
-                        for (int i = 0; i < extractor.getTrackCount(); i++) {
-                            android.media.MediaFormat fmt = extractor.getTrackFormat(i);
-                            String mime = fmt.getString(android.media.MediaFormat.KEY_MIME);
-                            if (mime.startsWith("video/") && videoTrack < 0) {
-                                videoTrack = i;
-                                dbg("  video: " + mime);
+                    // Use mp4parser for reliable MP4 concatenation
+                    dbg("Loading " + files.length + " files...");
+                    org.mp4parser.muxer.Movie result = org.mp4parser.muxer.MovieCreator.build(files[0].getAbsolutePath());
+                    for (int f = 1; f < files.length; f++) {
+                        dbg("  Appending " + files[f].getName());
+                        org.mp4parser.muxer.Movie movie = org.mp4parser.muxer.MovieCreator.build(files[f].getAbsolutePath());
+                        // Match video and audio tracks and concatenate
+                        java.util.List<org.mp4parser.muxer.Track> resultTracks = result.getTracks();
+                        for (org.mp4parser.muxer.Track newTrack : movie.getTracks()) {
+                            String newType = newTrack.getHandler();
+                            boolean matched = false;
+                            for (org.mp4parser.muxer.Track rt : resultTracks) {
+                                if (rt.getHandler().equals(newType)) {
+                                    // Concatenate samples
+                                    rt.getSamples().addAll(newTrack.getSamples());
+                                    rt.getSampleDurations().addAll(newTrack.getSampleDurations());
+                                    matched = true;
+                                    break;
+                                }
                             }
-                            else if (mime.startsWith("audio/") && audioTrack < 0) {
-                                audioTrack = i;
-                                dbg("  audio: " + mime);
-                            }
+                            if (!matched) result.addTrack(newTrack);
                         }
-                        dbg("  videoTrack=" + videoTrack + " audioTrack=" + audioTrack);
-
-                        if (!muxerStarted) {
-                            if (videoTrack >= 0) videoMuxTrack = muxer.addTrack(extractor.getTrackFormat(videoTrack));
-                            if (audioTrack >= 0) audioMuxTrack = muxer.addTrack(extractor.getTrackFormat(audioTrack));
-                            muxer.start();
-                            muxerStarted = true;
-                        }
-                        if (videoTrack >= 0) extractor.selectTrack(videoTrack);
-                        if (audioTrack >= 0) extractor.selectTrack(audioTrack);
-
-                        android.media.MediaCodec.BufferInfo info = new android.media.MediaCodec.BufferInfo();
-                        long lastPts = 0;
-                        long basePts = -1;
-                        int vCount = 0, aCount = 0;
-                        while (true) {
-                            int sampleSize = extractor.readSampleData(buffer, 0);
-                            if (sampleSize < 0) break;
-                            long rawPts = extractor.getSampleTime();
-                            if (basePts < 0) basePts = rawPts;
-                            info.offset = 0;
-                            info.size = sampleSize;
-                            info.presentationTimeUs = rawPts - basePts + totalDuration;
-                            if (info.presentationTimeUs < 0) info.presentationTimeUs = 0;
-                            info.flags = extractor.getSampleFlags();
-                            int trackIdx = extractor.getSampleTrackIndex();
-                            int muxTrack = -1;
-                            if (trackIdx == videoTrack) { muxTrack = videoMuxTrack; vCount++; }
-                            else if (trackIdx == audioTrack) { muxTrack = audioMuxTrack; aCount++; }
-                            if (muxTrack >= 0 && info.size > 0) {
-                                muxer.writeSampleData(muxTrack, buffer, info);
-                            }
-                            if (info.presentationTimeUs > lastPts) lastPts = info.presentationTimeUs;
-                            extractor.advance();
-                        }
-                        dbg("  vSamples=" + vCount + " aSamples=" + aCount + " basePts=" + basePts);
-                        totalDuration = lastPts;
-                        firstFile = false;
-                        extractor.release();
-                        dbg("  done, totalDuration=" + totalDuration);
                     }
-                    muxer.stop();
-                    muxer.release();
+                    dbg("Writing output...");
+                    java.io.FileOutputStream fos = new java.io.FileOutputStream(outPath);
+                    org.mp4parser.Container out = new org.mp4parser.muxer.DefaultMp4Builder().build(result);
+                    out.getBox(fos.getChannel());
+                    fos.close();
+                    dbg("Write complete");
 
                     // Verify output
                     File outFile = new File(outPath);
