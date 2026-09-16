@@ -339,9 +339,87 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public String getFfmpegPath() {
-            String nativeDir = getApplicationInfo().nativeLibraryDir;
-            File ffmpeg = new File(nativeDir, "libffmpeg.so");
-            return ffmpeg.exists() ? ffmpeg.getAbsolutePath() : "";
+            try {
+                String nativeDir = getApplicationInfo().nativeLibraryDir;
+                File binDir = new File(getFilesDir(), "bin");
+                File libDir = new File(binDir, "lib");
+                binDir.mkdirs(); libDir.mkdirs();
+                File ffmpeg = new File(binDir, "ffmpeg");
+                if (!ffmpeg.exists() || ffmpeg.length() < 100000) {
+                    // Copy from jniLibs
+                    copyFile(new File(nativeDir, "libffmpeg.so"), ffmpeg);
+                    ffmpeg.setExecutable(true, false);
+                    // Copy all .so files
+                    String[] needed = {"libavcodec","libavdevice","libavfilter","libavformat","libavutil","libswresample","libswscale"};
+                    for (String lib : needed) {
+                        File src = new File(nativeDir, lib + ".so");
+                        if (src.exists()) {
+                            File dst = new File(libDir, lib + ".so");
+                            copyFile(src, dst);
+                            // Create versioned symlink: libavcodec.so -> libavcodec.so.62
+                            String soname = getSoname(src);
+                            if (soname != null) {
+                                Runtime.getRuntime().exec(new String[]{"ln","-sf",lib+".so", new File(libDir, soname).getAbsolutePath()}).waitFor();
+                            }
+                        }
+                    }
+                }
+                return ffmpeg.exists() ? ffmpeg.getAbsolutePath() : "";
+            } catch (Exception e) { return ""; }
+        }
+
+        private void copyFile(File src, File dst) throws Exception {
+            FileInputStream fis = new FileInputStream(src);
+            FileOutputStream fos = new FileOutputStream(dst);
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = fis.read(buf)) != -1) fos.write(buf, 0, n);
+            fos.close(); fis.close();
+        }
+
+        private String getSoname(File soFile) {
+            // Read ELF to find DT_SONAME
+            try {
+                java.io.RandomAccessFile raf = new java.io.RandomAccessFile(soFile, "r");
+                raf.seek(28); // e_phoff for 64-bit
+                long phoff = raf.readLong();
+                raf.seek(54); // e_phentsize
+                int phentsize = raf.readShort();
+                int phnum = raf.readShort();
+                for (int i = 0; i < phnum; i++) {
+                    raf.seek(phoff + i * phentsize);
+                    int p_type = raf.readInt();
+                    if (p_type == 2) { // PT_DYNAMIC
+                        raf.seek(phoff + i * phentsize + 16);
+                        long dynoff = raf.readLong();
+                        raf.seek(phoff + i * phentsize + 32);
+                        long dynsize = raf.readLong();
+                        raf.seek(dynoff);
+                        long strtab = 0;
+                        java.util.List<long[]> entries = new java.util.ArrayList<>();
+                        for (long off = 0; off < dynsize; off += 16) {
+                            raf.seek(dynoff + off);
+                            long tag = raf.readLong();
+                            long val = raf.readLong();
+                            if (tag == 5) strtab = val;
+                            entries.add(new long[]{tag, val});
+                            if (tag == 0) break;
+                        }
+                        for (long[] e : entries) {
+                            if (e[0] == 14) { // DT_SONAME
+                                raf.seek(strtab + e[1]);
+                                StringBuilder sb = new StringBuilder();
+                                int b;
+                                while ((b = raf.read()) > 0) sb.append((char)b);
+                                raf.close();
+                                return sb.toString();
+                            }
+                        }
+                    }
+                }
+                raf.close();
+            } catch (Exception ignored) {}
+            return null;
         }
 
         @JavascriptInterface
@@ -372,9 +450,9 @@ public class MainActivity extends Activity {
                     FileOutputStream lfos = new FileOutputStream(listFile);
                     lfos.write(list.toString().getBytes());
                     lfos.close();
-                    String nativeDir = getApplicationInfo().nativeLibraryDir;
+                    String libDir = new File(getFilesDir(), "bin/lib").getAbsolutePath();
                     Process p = Runtime.getRuntime().exec(new String[]{"sh", "-c",
-                        "LD_LIBRARY_PATH=" + nativeDir + " " +
+                        "LD_LIBRARY_PATH=" + libDir + " " +
                         ffmpeg + " -y -f concat -safe 0 -i '" + listFile.getAbsolutePath() + "' -c copy '" + outPath + "' 2>&1"});
                     BufferedReader br = new BufferedReader(new InputStreamReader(p.getInputStream()));
                     StringBuilder errOut = new StringBuilder();
