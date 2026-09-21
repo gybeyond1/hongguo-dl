@@ -153,6 +153,13 @@ def start_download(req: DownloadRequest):
             with open(meta_path, "w") as f:
                 json.dump({"title": title, "cover": cover, "series_id": req.series_id, "total_episodes": total_eps}, f, ensure_ascii=False)
 
+            # juku 兼容标记：.drama-id 写入剧集 ID，便于与 juku 下载目录互通
+            try:
+                with open(os.path.join(drama_dir, ".drama-id"), "w") as f:
+                    f.write(req.series_id)
+            except Exception:
+                pass
+
             selected_vids = set()
             for ep in info["episodes"]:
                 if ep["vid_index"] in req.episodes:
@@ -171,8 +178,16 @@ def start_download(req: DownloadRequest):
                     download_tasks[task_id]["current"] = f"第{idx}集"
                 save_tasks()
 
-                out_path = os.path.join(drama_dir, f"{idx:03d}_第{idx}集.mp4")
+                # juku 兼容命名：纯数字 001.mp4（juku 格式），同时兼容旧格式 001_第1集.mp4
+                out_path = os.path.join(drama_dir, f"{idx:03d}.mp4")
+                legacy_path = os.path.join(drama_dir, f"{idx:03d}_第{idx}集.mp4")
                 if os.path.exists(out_path) and os.path.getsize(out_path) > 10000:
+                    with task_lock:
+                        download_tasks[task_id]["done"] += 1
+                    continue
+                # 旧格式文件存在则迁移到新格式
+                if os.path.exists(legacy_path) and os.path.getsize(legacy_path) > 10000:
+                    os.rename(legacy_path, out_path)
                     with task_lock:
                         download_tasks[task_id]["done"] += 1
                     continue
@@ -283,14 +298,28 @@ def list_files():
                         series_id = meta.get("series_id", "")
                 except Exception:
                     pass
+            # juku 目录兼容：无 .meta.json 时读 .drama-id 作为 series_id
+            if not series_id:
+                drama_id_path = drama_dir / ".drama-id"
+                if drama_id_path.exists():
+                    try:
+                        series_id = open(drama_id_path).read().strip()
+                    except Exception:
+                        pass
             downloaded_eps = set()
             merged_file = None
             for f in files:
-                m = re.match(r'(\d+)_', f.name)
-                if m:
+                # 分集：兼容 juku 格式（001.mp4）与旧格式（001_第1集.mp4）
+                m = re.match(r'^(\d+)', f.name)
+                if m and not f.name.endswith('.part.mp4'):
                     downloaded_eps.add(int(m.group(1)))
-                elif f.name.endswith('_全集.mp4'):
+                # 合并文件：旧格式 {标题}_全集.mp4 或 juku 格式 {标题}{start}-{end}.mp4
+                if f.name.endswith('_全集.mp4'):
                     merged_file = f.name
+                else:
+                    mj = re.match(r'^(.+?)(\d+)-(\d+)\.mp4$', f.name)
+                    if mj and len(mj.group(1)) > 0:
+                        merged_file = f.name
             missing_list = []
             if total_eps and not merged_file:
                 missing_list = [i for i in range(1, total_eps + 1) if i not in downloaded_eps]
@@ -344,9 +373,27 @@ def merge_episodes(req: MergeRequest):
             if req.drama in merge_tasks and merge_tasks[req.drama]["status"] == "running":
                 return {"code": -1, "msg": "正在合并中"}
 
-        mp4_files = sorted([f for f in Path(drama_dir).glob("*.mp4") if not f.name.endswith("_全集.mp4")])
+        # 收集分集：兼容 juku 格式（001.mp4）与旧格式（001_第1集.mp4）
+        # 排除已合并输出（juku: {标题}{start}-{end}.mp4；旧: {标题}_全集.mp4；临时 .part.mp4）
+        merged_names = set()
+        for f in Path(drama_dir).glob("*.mp4"):
+            bn = f.name
+            if bn.endswith("_全集.mp4") or ".part.mp4" in bn:
+                merged_names.add(bn)
+            # juku 合并格式：标题后跟数字-数字.mp4（如 标题1-200.mp4）
+            m = re.match(r'^(.+?)(\d+)-(\d+)\.mp4$', bn)
+            if m and len(m.group(1)) > 0:
+                merged_names.add(bn)
+        mp4_files = sorted([f for f in Path(drama_dir).glob("*.mp4")
+                            if f.name not in merged_names and not f.name.startswith(".")])
         if len(mp4_files) < 2:
             return {"code": -1, "msg": "至少需要2个视频才能合并"}
+
+        # 按集数排序（001.mp4 → 1）
+        def ep_key(fp):
+            m = re.match(r'^(\d+)', fp.name)
+            return int(m.group(1)) if m else 999999
+        mp4_files.sort(key=ep_key)
 
         with merge_lock:
             merge_tasks[req.drama] = {
@@ -358,85 +405,148 @@ def merge_episodes(req: MergeRequest):
 
         def worker():
             try:
-                list_path = os.path.join(drama_dir, "concat_list.txt")
-                with open(list_path, "w") as f:
-                    for fp in mp4_files:
-                        f.write(f"file '{fp.name}'\n")
+                add_log = lambda s: merge_tasks[req.drama]["logs"].append(s) if len(merge_tasks[req.drama]["logs"]) < 200 else None
+                with merge_lock:
+                    merge_tasks[req.drama]["logs"].clear()
 
-                output_path = os.path.join(drama_dir, f"{req.drama}_全集.mp4")
-                cmd = [
-                    "ffmpeg", "-y",
-                    "-f", "concat", "-safe", "0",
-                    "-i", list_path,
-                    "-c", "copy",
-                    "-movflags", "+faststart",
-                    output_path
-                ]
+                # ========== 复刻 juku media_merge.go：probe → 归一化 → concat → 校验 ==========
+                def probe_media(path, timeout=20):
+                    """用 ffprobe 提取编码签名（codec/尺寸/采样率等）"""
+                    cmd = ["ffprobe", "-v", "error", "-show_entries",
+                           "stream=codec_name,codec_type,width,height,sample_rate,channels,time_base",
+                           "-show_entries", "format=duration", "-of", "json", path]
+                    p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+                    if p.returncode != 0:
+                        raise Exception(f"ffprobe 失败: {p.stderr[:200]}")
+                    j = json.loads(p.stdout)
+                    v = next((s for s in j.get("streams", []) if s.get("codec_type") == "video"), None)
+                    a = next((s for s in j.get("streams", []) if s.get("codec_type") == "audio"), None)
+                    if not v or not j.get("format", {}).get("duration"):
+                        raise Exception(f"{os.path.basename(path)} 缺少视频流或时长")
+                    duration = float(j["format"]["duration"])
+                    sig_parts = [
+                        v.get("codec_name", ""),
+                        f"{v.get('width',0)}x{v.get('height',0)}",
+                        v.get("time_base", ""),
+                        a.get("codec_name", "") if a else "",
+                        str(a.get("sample_rate", "")) if a else "",
+                        str(a.get("channels", "")) if a else "",
+                    ]
+                    return {
+                        "signature": "|".join(sig_parts),
+                        "width": int(v.get("width", 0)),
+                        "height": int(v.get("height", 0)),
+                        "audio": bool(a),
+                        "duration": duration,
+                    }
+
+                # 1) 逐集探测，判断编码是否一致
+                metadata = []
+                total_dur = 0.0
+                max_w, max_h = 0, 0
+                any_audio = False
+                normalize = False
+                for i, fp in enumerate(mp4_files):
+                    with merge_lock:
+                        merge_tasks[req.drama]["logs"].append(f"🔍 检测分集编码 {i+1}/{len(mp4_files)}")
+                    info = probe_media(str(fp))
+                    if i > 0 and info["signature"] != metadata[0]["signature"]:
+                        normalize = True
+                    metadata.append(info)
+                    total_dur += info["duration"]
+                    max_w = max(max_w, info["width"])
+                    max_h = max(max_h, info["height"])
+                    any_audio = any_audio or info["audio"]
+
+                if not any_audio:
+                    with merge_lock:
+                        merge_tasks[req.drama]["logs"].append("⚠️ 所有分集均无音轨")
+                # 2) 确定合并方式
+                work = os.path.join(drama_dir, ".merge-work")
+                os.makedirs(work, exist_ok=True)
+                method = "原编码快速合并"
+                inputs = [str(fp) for fp in mp4_files]
+
+                if normalize:
+                    method = "兼容合并（H.264 / AAC 统一编码）"
+                    with merge_lock:
+                        merge_tasks[req.drama]["logs"].append("🎬 检测到编码不一致，统一转码为 H.264/AAC 后合并")
+                    # 目标分辨率：取最大，保持偶数
+                    if max_w % 2: max_w += 1
+                    if max_h % 2: max_h += 1
+                    processed = 0.0
+                    for i, fp in enumerate(mp4_files):
+                        with merge_lock:
+                            merge_tasks[req.drama]["logs"].append(f"🔄 统一格式 {i+1}/{len(mp4_files)}")
+                        tmp = os.path.join(work, f"{i+1:06d}.mp4")
+                        info = metadata[i]
+                        # juku normalizedMergeArgs 等价实现
+                        vf = (f"setpts=PTS-STARTPTS,fps=30,scale={max_w}:{max_h}:force_original_aspect_ratio=decrease:"
+                              f"force_divisible_by=2,pad={max_w}:{max_h}:(ow-iw)/2:(oh-ih)/2,setsar=1")
+                        cmd = ["ffmpeg", "-y", "-hide_banner", "-nostdin", "-xerror", "-threads", "2",
+                               "-i", str(fp)]
+                        if info["audio"]:
+                            cmd += ["-map", "0:v:0", "-map", "0:a:0", "-c:a", "aac", "-b:a", "128k",
+                                    "-ar", "48000", "-ac", "2",
+                                    "-af", "aresample=48000:async=1:first_pts=0,apad", "-shortest"]
+                        else:
+                            cmd += ["-map", "0:v:0", "-an"]
+                        cmd += ["-vf", vf, "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+                                "-profile:v", "high", "-pix_fmt", "yuv420p", "-g", "60",
+                                "-video_track_timescale", "90000", "-max_muxing_queue_size", "4096",
+                                "-t", f"{info['duration']:.6f}", "-f", "mp4", "-y", tmp]
+                        p = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+                        if p.returncode != 0:
+                            raise Exception(f"转码第{i+1}集失败: {p.stderr[-300:]}")
+                        inputs[i] = tmp
+                        processed += info["duration"]
+
+                # 3) concat 合并
+                list_path = os.path.join(work, "inputs.ffconcat")
+                with open(list_path, "w") as f:
+                    for p in inputs:
+                        ap = os.path.abspath(p).replace("'", "'\\''")
+                        f.write(f"file '{ap}'\n")
+
+                # 合并输出命名：juku 格式 {标题}{start}-{end}.mp4
+                start_ep = ep_key(mp4_files[0])
+                end_ep = ep_key(mp4_files[-1])
+                output_path = os.path.join(drama_dir, f"{req.drama}{start_ep}-{end_ep}.mp4")
+                part_path = os.path.join(drama_dir, f".{req.drama}{start_ep}-{end_ep}.part.mp4")
+                if os.path.exists(part_path):
+                    os.remove(part_path)
+
+                with merge_lock:
+                    merge_tasks[req.drama]["logs"].append(f"🔗 {method}：{len(mp4_files)}集 → {os.path.basename(output_path)}")
+                cmd = ["ffmpeg", "-y", "-hide_banner", "-nostdin", "-protocol_whitelist", "file,pipe",
+                       "-f", "concat", "-safe", "0", "-i", list_path,
+                       "-map", "0:v:0", "-map", "0:a:0?", "-sn", "-dn", "-c", "copy",
+                       "-movflags", "+faststart", part_path]
                 proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                          text=True, cwd=drama_dir)
                 for line in proc.stdout:
                     line = line.strip()
                     if line:
                         with merge_lock:
-                            merge_tasks[req.drama]["logs"].append(line)
-                            if len(merge_tasks[req.drama]["logs"]) > 100:
-                                merge_tasks[req.drama]["logs"] = merge_tasks[req.drama]["logs"][-100:]
+                            if len(merge_tasks[req.drama]["logs"]) < 200:
+                                merge_tasks[req.drama]["logs"].append(line)
                 proc.wait()
-                os.remove(list_path)
-
                 if proc.returncode != 0:
-                    with merge_lock:
-                        merge_tasks[req.drama]["status"] = "error"
-                        merge_tasks[req.drama]["logs"].append("❌ 合并失败: ffmpeg 返回错误")
-                    return
+                    raise Exception("concat 失败")
 
-                # 验证合并结果
-                if not os.path.exists(output_path):
-                    with merge_lock:
-                        merge_tasks[req.drama]["status"] = "error"
-                        merge_tasks[req.drama]["logs"].append("❌ 合并失败: 输出文件不存在")
-                    return
+                # 4) 校验合并结果：存在性 + 时长比对
+                if not os.path.exists(part_path) or os.path.getsize(part_path) < 50000:
+                    raise Exception("合并输出文件无效")
 
-                out_size = os.path.getsize(output_path)
-                if out_size < 1000000:
-                    with merge_lock:
-                        merge_tasks[req.drama]["status"] = "error"
-                        merge_tasks[req.drama]["logs"].append(f"❌ 合并失败: 输出文件太小 ({out_size} bytes)")
-                    return
+                merged_info = probe_media(part_path, timeout=30)
+                tolerance = max(total_dur / 100, 2.0)
+                if abs(merged_info["duration"] - total_dur) > tolerance:
+                    raise Exception(
+                        f"合并时长不符（预计 {total_dur:.1f}s，实际 {merged_info['duration']:.1f}s），保留单集文件")
 
-                # ffprobe 验证视频有效性
-                probe = subprocess.run(
-                    ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-                     "-of", "csv=p=0", output_path],
-                    capture_output=True, text=True, timeout=30
-                )
-                if probe.returncode != 0:
-                    with merge_lock:
-                        merge_tasks[req.drama]["status"] = "error"
-                        merge_tasks[req.drama]["logs"].append("❌ 合并失败: ffprobe 无法识别输出文件")
-                    return
+                os.replace(part_path, output_path)
 
-                try:
-                    out_duration = float(probe.stdout.strip())
-                except ValueError:
-                    out_duration = 0
-
-                # 计算所有单集总时长
-                total_input_size = sum(fp.stat().st_size for fp in mp4_files)
-                # 粗略校验：输出大小不应小于输入总和的 50%（同编码 copy 应该差不多）
-                size_ratio = out_size / total_input_size if total_input_size > 0 else 0
-                with merge_lock:
-                    merge_tasks[req.drama]["logs"].append(
-                        f"📊 合并结果: {len(mp4_files)}集, 输入{round(total_input_size/1024/1024,1)}MB → 输出{round(out_size/1024/1024,1)}MB, 时长{round(out_duration/60,1)}分钟"
-                    )
-
-                if size_ratio < 0.3:
-                    with merge_lock:
-                        merge_tasks[req.drama]["status"] = "error"
-                        merge_tasks[req.drama]["logs"].append(f"❌ 合并异常: 输出仅为输入的{round(size_ratio*100,1)}%，保留单集文件")
-                    return
-
-                # 验证通过，删除单集文件
+                # 5) 校验通过，删除单集与临时文件
                 deleted = 0
                 for fp in mp4_files:
                     try:
@@ -444,16 +554,19 @@ def merge_episodes(req: MergeRequest):
                         deleted += 1
                     except Exception:
                         pass
+                shutil.rmtree(work, ignore_errors=True)
 
-                size_mb = round(out_size / 1024 / 1024, 1)
+                out_size = os.path.getsize(output_path)
                 with merge_lock:
                     merge_tasks[req.drama]["status"] = "done"
                     merge_tasks[req.drama]["done"] = len(mp4_files)
-                    merge_tasks[req.drama]["logs"].append(f"✅ 合并完成: 删除了{deleted}个单集文件")
+                    merge_tasks[req.drama]["logs"].append(
+                        f"✅ 合并完成: {len(mp4_files)}集, {round(out_size/1024/1024,1)}MB, "
+                        f"时长{round(merged_info['duration']/60,1)}分钟, 删除{deleted}个单集")
             except Exception as e:
                 with merge_lock:
                     merge_tasks[req.drama]["status"] = "error"
-                    merge_tasks[req.drama]["logs"].append(f"❌ {e}")
+                    merge_tasks[req.drama]["logs"].append(f"❌ 合并失败: {e}")
 
         threading.Thread(target=worker, daemon=True).start()
         return {"code": 0, "data": {"drama": req.drama, "total": len(mp4_files)}}
