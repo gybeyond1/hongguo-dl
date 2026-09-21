@@ -9,84 +9,135 @@ import os
 import re
 import struct
 import time
+import hashlib
+import random
+from urllib.parse import urlencode
 from Crypto.Cipher import AES
 
 API = "https://api5-normal-sinfonlineb.fqnovel.com"
-UA = "com.phoenix.read/71532 (Linux; U; Android 9; SM-N9860; Build/PQ3A.190705.10241111;tt-ok/3.12.13.20)"
+# 新版 7.3.5.32 UA（参考 juku-backend，可绕过风控）
+UA = "com.phoenix.read/73532 (Linux; U; Android 16; zh_CN; 25053RT47C; Build/BP2A.250605.031.A3; Cronet/TTNetVersion:04657795 2026-01-23 QuicVersion:c67e9834 2025-09-08)"
 
-COMMON_QUERY = {
-    "klink_egdi": "AAI29o4dI-eMiO73_SRSbZ_0By1v3fUSriNeu8-L951MoXhWT88pzj5B",
-    "iid": "3788260546453235",
-    "device_id": "538083340353620",
-    "ac": "wifi",
-    "channel": "oppo_8662_64",
-    "aid": "8662",
-    "app_name": "novelread",
-    "version_code": "71532",
-    "version_name": "7.1.5.32",
-    "device_platform": "android",
-    "os": "android",
-    "ssmix": "a",
-    "device_type": "SM-N9860",
-    "device_brand": "Samsung",
-    "language": "zh",
-    "os_api": "28",
-    "os_version": "9",
-    "manifest_version_code": "71532",
-    "resolution": "900*1600",
-    "dpi": "320",
-    "update_version_code": "71532",
-    "host_abi": "arm64-v8a",
-    "dragon_device_type": "pad",
-    "pv_player": "71532",
-    "compliance_status": "0",
-    "need_personal_recommend": "1",
-    "player_so_load": "1",
-    "is_android_pad_screen": "0",
-    "rom_version": "PQ3A.190705.10241111+release-keys",
-    "cdid": "b4f93387-5319-4134-aab9-2cd4e9279b8f",
-}
+_device_id = None
+_install_id = None
+
+
+def _new_device_id():
+    return str(1_000_000_000_000_000_000 + random.getrandbits(63) % 8_000_000_000_000_000_000)
+
+
+def get_device_ids():
+    """每次进程启动随机生成设备 ID / 安装 ID（与 juku-backend 一致）"""
+    global _device_id, _install_id
+    if _device_id is None:
+        _device_id = _new_device_id()
+        _install_id = _new_device_id()
+    return _device_id, _install_id
+
+
+def COMMON_QUERY():
+    device_id, install_id = get_device_ids()
+    return {
+        "aid": "8662",
+        "app_name": "novelread",
+        "version_code": "73532",
+        "version_name": "7.3.5.32",
+        "manifest_version_code": "73532",
+        "update_version_code": "73532",
+        "channel": "update_64",
+        "device_platform": "android",
+        "os": "android",
+        "ssmix": "a",
+        "device_type": "25053RT47C",
+        "device_brand": "Redmi",
+        "language": "zh",
+        "os_api": "36",
+        "os_version": "16",
+        "resolution": "1280*2772",
+        "dpi": "520",
+        "ac": "wifi",
+        "device_id": device_id,
+        "iid": install_id,
+    }
+
 
 HEADERS = {
     "User-Agent": UA,
     "Accept-Encoding": "gzip",
-    "Accept": "application/json; charset=utf-8,application/x-protobuf",
+    "Accept": "application/json",
     "Content-Type": "application/json; charset=utf-8",
+    "X-XS-From-Web": "0",
+    "Sdk-Version": "2",
     "Host": "api5-normal-sinfonlineb.fqnovel.com",
 }
 
-DETAIL_BIZ_PARAM = {
-    "detail_page_version": 0,
-    "disable_digg_stat": False,
-    "image_shrink_datas_str": "W3siaW1hZ2VfdHlwZSI6MywiaW1hZ2Vfd2lkdGgiOjkwMCwic2hyaW5rX3R5cGUiOjN9LHsiaW1hZ2VfdHlwZSI6NCwiaW1hZ2Vfd2lkdGgiOjcyLCJzaHJpbmtfdHlwZSI6NH1d",
-    "need_all_video_definition": False,
-    "need_mp4_align": False,
-    "screen_width_px": "900",
-    "source": 7,
-    "use_os_player": False,
-    "use_server_dns": False,
-}
 
-MODEL_BIZ_PARAM = {
-    "detail_page_version": 0,
-    "device_level": 3,
-    "disable_digg_stat": False,
-    "need_all_video_definition": True,
-    "need_mp4_align": False,
-    "use_os_player": False,
-    "use_server_dns": False,
-    "video_platform": 1024,
-}
+def _rotl8(b, n):
+    return ((b << n) | (b >> (8 - n))) & 0xff
 
 
-def api_call(path, body):
-    q = dict(COMMON_QUERY)
+def _rev8(b):
+    return int("{:08b}".format(b)[::-1], 2)
+
+
+def _sign_request(query_str, body, now):
+    """复刻 juku-backend 的 X-Gorgon / X-Khronos 签名"""
+    ts = int(now)
+    query_hash = hashlib.md5(query_str.encode()).digest()
+    payload = bytearray(20)
+    payload[0:4] = query_hash[0:4]
+    stub = None
+    if body:
+        body_hash = hashlib.md5(body).digest()
+        payload[4:8] = body_hash[0:4]
+        stub = body_hash.hex().upper()
+    payload[12:16] = bytes([0, 6, 11, 28])
+    struct.pack_into(">I", payload, 16, ts)
+    key = bytes([0x44, 0xb9, 0xb9, 0xd9, 0xa4, 0xae, 0xf9, 0xfc,
+                 0xa4, 0x93, 0xaa, 0x75, 0x7c, 0xa3, 0xc2, 0xc4,
+                 0xa4, 0x96, 0x93, 0x8f])
+    for i in range(len(payload)):
+        payload[i] ^= key[i]
+    for i in range(len(payload)):
+        payload[i] = _rev8(_rotl8(payload[i], 4) ^ payload[(i + 1) % len(payload)]) ^ 0xff ^ len(payload)
+    signature = bytes([0x84, 0x04, 0x40, 0x1c, 0, 0]) + bytes(payload)
+    return {
+        "X-Khronos": str(ts),
+        "X-Gorgon": signature.hex().upper(),
+        "X-SS-Req-Ticket": str(int(now * 1000)),
+        "X-SS-STUB": stub,
+    }
+
+
+def api_call(path, body, retries=3):
+    """带 X-Gorgon 签名的新版请求，失败自动重试"""
+    q = COMMON_QUERY()
     q["_rticket"] = str(int(time.time() * 1000))
-    resp = requests.post(API + path, json=body, params=q, headers=HEADERS, timeout=30)
-    data = resp.json()
-    if data.get("code") != 0:
-        raise Exception(f"API错误: {data.get('message', data)}")
-    return data
+    # 签名必须与实际发送的 query 顺序一致（Python requests 按 dict 插入顺序编码）
+    qs = urlencode(q)
+    body_bytes = json.dumps(body, separators=(",", ":")).encode() if body else b""
+    headers = dict(HEADERS)
+    sig = _sign_request(qs, body_bytes, time.time())
+    for k, v in sig.items():
+        if v:
+            headers[k] = v
+    last_err = None
+    for attempt in range(retries):
+        try:
+            resp = requests.post(API + path, data=body_bytes, params=q, headers=headers, timeout=30)
+            if len(resp.content) == 0:
+                last_err = Exception(f"API返回空（风控）: {path}")
+            else:
+                data = resp.json()
+                if data.get("code") not in (0, None) and data.get("Code") not in (0, None):
+                    last_err = Exception(f"API错误: {data.get('message') or data.get('Message') or data}")
+                else:
+                    return data
+        except Exception as e:
+            last_err = e
+        if attempt < retries - 1:
+            time.sleep(2 * (attempt + 1))
+    raise last_err or Exception(f"API调用失败: {path}")
 
 
 def resolve_series_id(share_url):
@@ -117,56 +168,94 @@ def resolve_series_id(share_url):
 
 
 def fetch_episode_list(series_id):
-    body = {"biz_param": DETAIL_BIZ_PARAM, "dr_scene": "preload", "series_id": series_id}
-    j = api_call("/novel/player/multi_video_detail/preload/v1", body)
+    """新版接口 video_detail/v1/ 获取剧集列表（带签名）"""
+    body = {"series_id": series_id}
+    j = api_call("/novel/player/video_detail/v1/", body)
     d = j.get("data", {})
-    sid = list(d.keys())[0]
-    vd = d[sid].get("video_data", {})
+    vd = d.get("video_data", {})
     vl = vd.get("video_list", [])
     eps = []
     for item in vl:
         eps.append({
             "vid": str(item["vid"]),
-            "vid_index": item.get("vid_index", 0),
+            "vid_index": int(item.get("vid_index", len(eps) + 1)),
             "title": item.get("title", ""),
         })
     eps.sort(key=lambda x: x["vid_index"])
     return {
-        "series_id": sid,
+        "series_id": series_id,
         "series_title": vd.get("series_title", "未命名"),
         "cover": vd.get("series_cover", ""),
         "episodes": eps,
     }
 
 
-def fetch_play_url(vid):
-    body = {
-        "biz_param": MODEL_BIZ_PARAM,
-        "dr_scene": "preload",
-        "mixed_video_id_map": {"1004": [vid]},
+def fetch_web_play_url(series_id, vid):
+    """Web 页面取流：novelquickapp.com/player/{seriesID}/{videoID} 页面内嵌 main_url（未加密）"""
+    page_url = f"https://novelquickapp.com/player/{series_id}/{vid}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Linux; Android 16; 25053RT47C) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36",
+        "Referer": "https://novelquickapp.com/",
     }
-    j = api_call("/novel/player/multi_video_model/preload/v1", body)
-    item = j.get("data", {}).get(vid, {})
-    vm_str = item.get("video_model", "")
-    vm = json.loads(vm_str) if isinstance(vm_str, str) else vm_str
-    vl = vm.get("video_list", [])
-    best = None
-    best_score = -1
-    for v in vl:
-        meta = v.get("video_meta", {})
-        defn = str(meta.get("definition", ""))
-        dm = re.search(r"(\d+)", defn)
-        p = int(dm.group(1)) if dm else 0
-        w = int(meta.get("vwidth", 0))
-        h = int(meta.get("vheight", 0))
-        br = int(meta.get("bitrate", 0))
-        score = p * 1000000 + w * h + br
-        if score > best_score:
-            best_score = score
-            best = (v.get("main_url", ""), v.get("encrypt_info", {}).get("spade_a", ""))
-    if not best:
-        return None, None
-    return best[0], best[1]
+    resp = requests.get(page_url, headers=headers, timeout=30)
+    text = resp.text
+    idx = text.find("video_player_info")
+    if idx < 0:
+        return None
+    seg = text[idx:idx + 6000]
+    m = re.search(r'"main_url"\s*:\s*"([^"]+)"', seg)
+    if not m:
+        return None
+    main_url = m.group(1).replace("\\u002f", "/").replace("\\u002F", "/").replace("\\/", "/")
+    if not main_url.startswith("http"):
+        return None
+    return main_url
+
+
+def fetch_play_url(series_id, vid):
+    """取播放地址：先 Web 页面取流（未加密直链，最稳），再 App 接口（签名，加密流兜底）"""
+    # 1) Web 页面取流（未加密直链，可直接下载无需解密）
+    web_url = fetch_web_play_url(series_id, vid)
+    if web_url:
+        return web_url, None, False
+
+    # 2) App 原生接口 video_model/v1/（带签名，可能加密）
+    body = {
+        "video_id": vid,
+        "content_type": 1,
+        "biz_param": {"need_all_video_definition": True, "video_platform": 3},
+    }
+    try:
+        j = api_call("/novel/player/video_model/v1/", body)
+        data = j.get("data", {})
+        vm = data.get("video_model", {})
+        if isinstance(vm, str):
+            vm = json.loads(vm) if vm else {}
+        vl = vm.get("video_list", [])
+        best = None
+        best_score = -1
+        for v in vl:
+            meta = v.get("video_meta", {})
+            # 跳过 bytevc2（不兼容编码）
+            codec = str(meta.get("codec_type", "")).lower()
+            if codec == "bytevc2":
+                continue
+            defn = str(meta.get("definition", ""))
+            dm = re.search(r"(\d+)", defn)
+            p = int(dm.group(1)) if dm else 0
+            w = int(meta.get("vwidth", 0))
+            h = int(meta.get("vheight", 0))
+            score = p * 1000000 + w * h
+            if score > best_score:
+                best_score = score
+                enc = v.get("encrypt_info", {}) or {}
+                best = (v.get("main_url", ""), enc.get("spade_a", ""))
+        if best and best[0]:
+            return best[0], best[1], True
+    except Exception:
+        pass
+
+    return None, None, False
 
 
 def av_base64_decode(s):

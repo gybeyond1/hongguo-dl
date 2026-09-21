@@ -29,7 +29,21 @@ import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
 
-    private static final String UA = "com.phoenix.read/71532 (Linux; U; Android 9; SM-N9860; Build/PQ3A.190705.10241111;tt-ok/3.12.13.20)";
+    private static final String UA = "com.phoenix.read/73532 (Linux; U; Android 16; zh_CN; 25053RT47C; Build/BP2A.250605.031.A3; Cronet/TTNetVersion:04657795 2026-01-23 QuicVersion:c67e9834 2025-09-08)";
+    private static final String HG_API = "https://api5-normal-sinfonlineb.fqnovel.com";
+    private static final String WEB_UA = "Mozilla/5.0 (Linux; Android 16; 25053RT47C) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36";
+    private static String hgDeviceId = null;
+    private static String hgInstallId = null;
+    private static final String[] HG_QUERY_KEYS = {
+        "aid","app_name","version_code","version_name","manifest_version_code","update_version_code",
+        "channel","device_platform","os","ssmix","device_type","device_brand","language","os_api",
+        "os_version","resolution","dpi","ac","device_id","iid"
+    };
+    private static final String[] HG_QUERY_VALS = {
+        "8662","novelread","73532","7.3.5.32","73532","73532","update_64",
+        "android","android","a","25053RT47C","Redmi","zh","36","16",
+        "1280*2772","520","wifi"
+    };
     private WebView webView;
     private SharedPreferences prefs;
     private volatile String authToken = "";
@@ -421,6 +435,177 @@ public class MainActivity extends Activity {
                 runOnUiThread(() -> webView.evaluateJavascript(
                     "window.onFfmpegError && onFfmpegError('ffmpeg未找到')", null));
             }
+        }
+
+        @JavascriptInterface
+        public void hgApiCall(String path, String bodyJson, String callbackId) {
+            executor.execute(() -> {
+                try {
+                    if (hgDeviceId == null) {
+                        java.util.Random rnd = new java.util.Random();
+                        long d = 1_000_000_000_000_000_000L + (long)(rnd.nextDouble() * 8_000_000_000_000_000_000L);
+                        long i = 1_000_000_000_000_000_000L + (long)(rnd.nextDouble() * 8_000_000_000_000_000_000L);
+                        hgDeviceId = String.valueOf(d);
+                        hgInstallId = String.valueOf(i);
+                    }
+                    // Build query in fixed order (insertion order matters for signature)
+                    java.util.LinkedHashMap<String, String> q = new java.util.LinkedHashMap<>();
+                    for (int i = 0; i < HG_QUERY_KEYS.length; i++) q.put(HG_QUERY_KEYS[i], HG_QUERY_VALS[i]);
+                    q.put("device_id", hgDeviceId);
+                    q.put("iid", hgInstallId);
+                    long nowMs = System.currentTimeMillis();
+                    q.put("_rticket", String.valueOf(nowMs));
+                    StringBuilder qs = new StringBuilder();
+                    boolean first = true;
+                    for (java.util.Map.Entry<String, String> e : q.entrySet()) {
+                        if (!first) qs.append("&");
+                        first = false;
+                        qs.append(urlEncode(e.getKey())).append("=").append(urlEncode(e.getValue()));
+                    }
+                    byte[] bodyBytes = (bodyJson == null || bodyJson.isEmpty()) ? new byte[0] : bodyJson.getBytes("UTF-8");
+                    // Sign
+                    long tsSec = nowMs / 1000;
+                    byte[] qHash = md5(qs.toString().getBytes("UTF-8"));
+                    byte[] payload = new byte[20];
+                    System.arraycopy(qHash, 0, payload, 0, 4);
+                    String stub = "";
+                    if (bodyBytes.length > 0) {
+                        byte[] bHash = md5(bodyBytes);
+                        System.arraycopy(bHash, 0, payload, 4, 4);
+                        stub = toHexUpper(bHash);
+                    }
+                    payload[12] = 0; payload[13] = 6; payload[14] = 11; payload[15] = 28;
+                    writeBE32(payload, 16, (int) tsSec);
+                    byte[] key = new byte[]{(byte)0x44,(byte)0xb9,(byte)0xb9,(byte)0xd9,(byte)0xa4,(byte)0xae,(byte)0xf9,(byte)0xfc,(byte)0xa4,(byte)0x93,(byte)0xaa,(byte)0x75,(byte)0x7c,(byte)0xa3,(byte)0xc2,(byte)0xc4,(byte)0xa4,(byte)0x96,(byte)0x93,(byte)0x8f};
+                    for (int i = 0; i < 20; i++) payload[i] ^= key[i];
+                    for (int i = 0; i < 20; i++) {
+                        int b = payload[i] & 0xff;
+                        int mixed = (rotl8(b, 4) ^ (payload[(i + 1) % 20] & 0xff)) & 0xff;
+                        payload[i] = (byte) (reverse8(mixed) ^ 0xff ^ 20);
+                    }
+                    byte[] signature = new byte[]{0x84,0x04,0x40,0x1c,0,0,(byte)payload[0],(byte)payload[1],(byte)payload[2],(byte)payload[3],(byte)payload[4],(byte)payload[5],(byte)payload[6],(byte)payload[7],(byte)payload[8],(byte)payload[9],(byte)payload[10],(byte)payload[11],(byte)payload[12],(byte)payload[13],(byte)payload[14],(byte)payload[15],(byte)payload[16],(byte)payload[17],(byte)payload[18],(byte)payload[19]};
+                    // Request
+                    URL u = new URL(HG_API + path + "?" + qs.toString());
+                    HttpURLConnection conn = (HttpURLConnection) u.openConnection();
+                    conn.setRequestMethod("POST");
+                    conn.setRequestProperty("User-Agent", UA);
+                    conn.setRequestProperty("Accept", "application/json");
+                    conn.setRequestProperty("X-XS-From-Web", "0");
+                    conn.setRequestProperty("Sdk-Version", "2");
+                    conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                    conn.setRequestProperty("X-Khronos", String.valueOf(tsSec));
+                    conn.setRequestProperty("X-Gorgon", toHexLower(signature));
+                    conn.setRequestProperty("X-SS-Req-Ticket", String.valueOf(nowMs));
+                    if (!stub.isEmpty()) conn.setRequestProperty("X-SS-STUB", stub);
+                    conn.setConnectTimeout(15000);
+                    conn.setReadTimeout(30000);
+                    conn.setDoOutput(true);
+                    java.io.OutputStream os = conn.getOutputStream();
+                    os.write(bodyBytes);
+                    os.flush();
+                    os.close();
+                    int code = conn.getResponseCode();
+                    InputStream is = (code >= 200 && code < 400) ? conn.getInputStream() : conn.getErrorStream();
+                    StringBuilder sb = new StringBuilder();
+                    byte[] buf = new byte[4096];
+                    int n;
+                    while ((n = is.read(buf)) != -1) sb.append(new String(buf, 0, n, "UTF-8"));
+                    conn.disconnect();
+                    final String resp = sb.toString();
+                    final int rcode = code;
+                    runOnUiThread(() -> webView.evaluateJavascript(
+                        "window.onHttpResponse && onHttpResponse('" + callbackId + "'," + rcode + ",'" + u.toString().replace("\\","\\\\").replace("'","\\'") + "','" + resp.replace("\\","\\\\").replace("'","\\'").replace("\n","\\n").replace("\r","") + "')", null));
+                } catch (Exception e) {
+                    final String msg = e.getMessage() == null ? "error" : e.getMessage().replace("\\","\\\\").replace("'","\\'");
+                    runOnUiThread(() -> webView.evaluateJavascript(
+                        "window.onHttpError && onHttpError('" + callbackId + "','" + msg + "')", null));
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void fetchWebMedia(String seriesId, String vid, String callbackId) {
+            executor.execute(() -> {
+                try {
+                    URL u = new URL("https://novelquickapp.com/player/" + seriesId + "/" + vid);
+                    HttpURLConnection conn = (HttpURLConnection) u.openConnection();
+                    conn.setRequestProperty("User-Agent", WEB_UA);
+                    conn.setRequestProperty("Referer", "https://novelquickapp.com/");
+                    conn.setConnectTimeout(15000);
+                    conn.setReadTimeout(30000);
+                    int code = conn.getResponseCode();
+                    InputStream is = (code >= 200 && code < 400) ? conn.getInputStream() : conn.getErrorStream();
+                    java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+                    byte[] buf = new byte[8192];
+                    int n;
+                    while ((n = is.read(buf)) != -1) bos.write(buf, 0, n);
+                    conn.disconnect();
+                    String text = bos.toString("UTF-8");
+                    int idx = text.indexOf("video_player_info");
+                    String mainUrl = "";
+                    if (idx >= 0) {
+                        String seg = text.substring(idx, Math.min(idx + 6000, text.length()));
+                        java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"main_url\"\\s*:\\s*\"([^\"]+)\"").matcher(seg);
+                        if (m.find()) {
+                            mainUrl = m.group(1).replace("\\u002f", "/").replace("\\u002F", "/").replace("\\/", "/");
+                        }
+                    }
+                    final String url = mainUrl;
+                    runOnUiThread(() -> webView.evaluateJavascript(
+                        "window.onWebMedia && onWebMedia('" + callbackId + "','" + url.replace("\\","\\\\").replace("'","\\'") + "')", null));
+                } catch (Exception e) {
+                    final String msg = e.getMessage() == null ? "error" : e.getMessage().replace("'","\\'");
+                    runOnUiThread(() -> webView.evaluateJavascript(
+                        "window.onHttpError && onHttpError('" + callbackId + "','" + msg + "')", null));
+                }
+            });
+        }
+
+        private static byte[] md5(byte[] data) {
+            try {
+                java.security.MessageDigest md = java.security.MessageDigest.getInstance("MD5");
+                return md.digest(data);
+            } catch (Exception e) { return new byte[16]; }
+        }
+
+        private static String toHexUpper(byte[] data) {
+            StringBuilder sb = new StringBuilder();
+            for (byte b : data) sb.append(String.format("%02X", b));
+            return sb.toString();
+        }
+
+        private static String toHexLower(byte[] data) {
+            StringBuilder sb = new StringBuilder();
+            for (byte b : data) sb.append(String.format("%02x", b));
+            return sb.toString();
+        }
+
+        private static void writeBE32(byte[] arr, int off, int val) {
+            arr[off] = (byte)((val >> 24) & 0xff);
+            arr[off+1] = (byte)((val >> 16) & 0xff);
+            arr[off+2] = (byte)((val >> 8) & 0xff);
+            arr[off+3] = (byte)(val & 0xff);
+        }
+
+        private static int rotl8(int b, int n) {
+            return ((b << n) | (b >> (8 - n))) & 0xff;
+        }
+
+        private static int reverse8(int b) {
+            int r = 0;
+            for (int i = 0; i < 8; i++) {
+                r = (r << 1) | (b & 1);
+                b >>= 1;
+            }
+            return r & 0xff;
+        }
+
+        private static String urlEncode(String s) {
+            try {
+                // 与 Python urllib.parse.urlencode(quote_plus, safe='') 完全一致：
+                // 空格→+，*→%2A，~→%7E（Java URLEncoder 保留 * 和 ~，需手动替换）
+                return java.net.URLEncoder.encode(s, "UTF-8").replace("*", "%2A").replace("~", "%7E");
+            } catch (Exception e) { return s; }
         }
 
         @JavascriptInterface

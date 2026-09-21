@@ -181,6 +181,7 @@ def start_download(req: DownloadRequest):
                     enc_path = out_path + ".enc"
                     video_url = None
                     spade_a = None
+                    encrypted = False
                     dl_headers = {
                         "User-Agent": "Mozilla/5.0 (Linux; Android 9; SM-N9860) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
                         "Referer": "https://novelquickapp.com/",
@@ -188,7 +189,7 @@ def start_download(req: DownloadRequest):
                         "Accept": "*/*",
                     }
                     for attempt in range(3):
-                        video_url, spade_a = hg.fetch_play_url(vid)
+                        video_url, spade_a, encrypted = hg.fetch_play_url(req.series_id, vid)
                         if not video_url:
                             continue
                         try:
@@ -204,10 +205,13 @@ def start_download(req: DownloadRequest):
                         raise Exception("无播放地址")
                     with open(enc_path, "wb") as f:
                         f.write(r.content)
-                    key = hg.derive_key(spade_a)
-                    if key:
-                        hg.decrypt_mp4_file(enc_path, out_path, key)
-                        os.remove(enc_path)
+                    if encrypted and spade_a:
+                        key = hg.derive_key(spade_a)
+                        if key:
+                            hg.decrypt_mp4_file(enc_path, out_path, key)
+                            os.remove(enc_path)
+                        else:
+                            os.rename(enc_path, out_path)
                     else:
                         os.rename(enc_path, out_path)
                 except Exception as e:

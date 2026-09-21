@@ -69,11 +69,14 @@ docker compose up -d
 
 ## 技术原理
 
-- 调用字节跳动 CDN API 获取剧集列表和播放地址
-- 使用 spade_a 字段推导 AES-128 密钥
-- AES-CTR 解密每个 sample
-- 重建 MP4 moov box 使视频可正常播放
+- 分享链接解析：跟随短链跳转，从最终 URL 的 schemeParams 中提取 `video_id` 作为剧集 ID
+- 剧集列表：调用新版 `video_detail/v1/` 接口（X-Gorgon/X-Khronos 签名 + 随机设备 ID）
+- 播放地址：优先 Web 页面取流 `novelquickapp.com/player/{sid}/{vid}`（返回未加密 MP4 直链，最稳定）
+- 兜底：App 签名接口 `video_model/v1/` 获取加密流，用 spade_a 推导 AES-128 密钥解密
+- AES-CTR 解密每个 sample，重建 MP4 moov box 使视频可正常播放
 - ffmpeg concat copy 合并所有集数
+
+> **2026-09 风控说明**：红果对旧接口 `multi_video_detail/preload/v1`、`multi_video_model/preload/v1` 实施了风控（HTTP 200 空 body）。本项目已迁移至新接口 `video_detail/v1/`、`video_model/v1/`，请求携带 X-Gorgon/X-Khronos 签名（算法复刻自 juku-backend），并使用 Web 页面取流作为稳定主通道。
 
 ## 技术栈
 
