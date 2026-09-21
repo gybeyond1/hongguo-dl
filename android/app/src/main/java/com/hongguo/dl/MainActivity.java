@@ -449,8 +449,9 @@ public class MainActivity extends Activity {
                         hgInstallId = String.valueOf(i);
                     }
                     // Build query in fixed order (insertion order matters for signature)
+                    // HG_QUERY_VALS 只含18个静态参数；device_id/iid 动态生成，单独追加
                     java.util.LinkedHashMap<String, String> q = new java.util.LinkedHashMap<>();
-                    for (int i = 0; i < HG_QUERY_KEYS.length; i++) q.put(HG_QUERY_KEYS[i], HG_QUERY_VALS[i]);
+                    for (int i = 0; i < HG_QUERY_VALS.length; i++) q.put(HG_QUERY_KEYS[i], HG_QUERY_VALS[i]);
                     q.put("device_id", hgDeviceId);
                     q.put("iid", hgInstallId);
                     long nowMs = System.currentTimeMillis();
