@@ -475,15 +475,15 @@ public class MainActivity extends Activity {
                         stub = toHexUpper(bHash);
                     }
                     payload[12] = 0; payload[13] = 6; payload[14] = 11; payload[15] = 28;
-                    writeBE32(payload, 16, (int) tsSec);
+                    writeBE32(payload, 16, (int) (tsSec & 0xffffffffL));
                     byte[] key = new byte[]{(byte)0x44,(byte)0xb9,(byte)0xb9,(byte)0xd9,(byte)0xa4,(byte)0xae,(byte)0xf9,(byte)0xfc,(byte)0xa4,(byte)0x93,(byte)0xaa,(byte)0x75,(byte)0x7c,(byte)0xa3,(byte)0xc2,(byte)0xc4,(byte)0xa4,(byte)0x96,(byte)0x93,(byte)0x8f};
-                    for (int i = 0; i < 20; i++) payload[i] ^= key[i];
+                    for (int i = 0; i < 20; i++) payload[i] = (byte) (payload[i] ^ key[i]);
                     for (int i = 0; i < 20; i++) {
                         int b = payload[i] & 0xff;
                         int mixed = (rotl8(b, 4) ^ (payload[(i + 1) % 20] & 0xff)) & 0xff;
                         payload[i] = (byte) (reverse8(mixed) ^ 0xff ^ 20);
                     }
-                    byte[] signature = new byte[]{0x84,0x04,0x40,0x1c,0,0,(byte)payload[0],(byte)payload[1],(byte)payload[2],(byte)payload[3],(byte)payload[4],(byte)payload[5],(byte)payload[6],(byte)payload[7],(byte)payload[8],(byte)payload[9],(byte)payload[10],(byte)payload[11],(byte)payload[12],(byte)payload[13],(byte)payload[14],(byte)payload[15],(byte)payload[16],(byte)payload[17],(byte)payload[18],(byte)payload[19]};
+                    byte[] signature = new byte[]{(byte)0x84,(byte)0x04,(byte)0x40,(byte)0x1c,0,0,(byte)payload[0],(byte)payload[1],(byte)payload[2],(byte)payload[3],(byte)payload[4],(byte)payload[5],(byte)payload[6],(byte)payload[7],(byte)payload[8],(byte)payload[9],(byte)payload[10],(byte)payload[11],(byte)payload[12],(byte)payload[13],(byte)payload[14],(byte)payload[15],(byte)payload[16],(byte)payload[17],(byte)payload[18],(byte)payload[19]};
                     // Request
                     URL u = new URL(HG_API + path + "?" + qs.toString());
                     HttpURLConnection conn = (HttpURLConnection) u.openConnection();
