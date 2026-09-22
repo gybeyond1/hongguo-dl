@@ -103,9 +103,10 @@ button.sm{padding:5px 10px;font-size:12px;border-radius:6px}
 
 <div class="settings-panel" id="settingsPanel">
   <div class="settings-box">
-    <h2>⚙️ NAS 连接</h2>
-    <input id="setHost" placeholder="NAS 地址 (如 http://192.168.31.76:8800)">
-    <input id="setPwd" type="password" placeholder="访问密钥">
+    <h2>⚙️ NAS 连接（聚酷）</h2>
+    <input id="setHost" placeholder="NAS 地址 (如 http://192.168.31.76:8998)">
+    <input id="setUser" placeholder="账号（聚酷账号，可选）">
+    <input id="setPwd" type="password" placeholder="密码">
     <div class="row">
       <button class="sec" style="flex:1" onclick="testConnection()">测试连接</button>
       <button style="flex:1" onclick="saveSettings()">保存</button>
@@ -118,10 +119,11 @@ button.sm{padding:5px 10px;font-size:12px;border-radius:6px}
 const API='https://api5-normal-sinfonlineb.fqnovel.com';
 let episodes=[],currentSeriesId='',selectedEps=new Set(),downloadDir='/sdcard/Download/HG_Download';
 let currentTitle='',currentCover='';
-let cloudHost='',cloudPwd='',downloadTarget='local';
+let cloudHost='',cloudUser='',cloudPwd='',downloadTarget='local';
 let httpCallbackId=0,httpCallbacks={};
 let fileDlId=0,fileCallbacks={};
 let webMediaCallbacks={};
+let cloudPollTimer=null;
 
 function dbg(msg){
   const el=document.getElementById('debugLog');
@@ -151,6 +153,13 @@ function httpGet(url){
     const id='cb'+(++httpCallbackId);
     httpCallbacks[id]={resolve,reject};
     AndroidBridge.httpRequest(url,'GET','',id);
+  });
+}
+function httpPost(url,body){
+  return new Promise((resolve,reject)=>{
+    const id='cb'+(++httpCallbackId);
+    httpCallbacks[id]={resolve,reject};
+    AndroidBridge.httpRequest(url,'POST',JSON.stringify(body),id);
   });
 }
 
@@ -297,6 +306,61 @@ function pickTarget(t){
 }
 pickTarget('local');
 
+// ===== 聚酷（juku）云模式 =====
+async function jukuInit(){
+  let r=await httpGet(cloudHost+'/api/ui/viewer');
+  let j=JSON.parse(r.text);
+  if(!j.ready){
+    r=await httpGet(cloudHost+'/api/ui/viewer?confirm=1');
+    j=JSON.parse(r.text);
+  }
+  if(!j.ready||!/^[a-f0-9]{64}$/.test(j.id))throw new Error('无法建立观看身份，请确认地址正确');
+  AndroidBridge.setJukuIdentity(j.id,(j.sources||[]).join(','),String(j.onlineOnly===true));
+  if(!j.account){
+    if(!cloudUser){throw new Error('该NAS需要登录，请在设置填写账号');}
+    const resp=await httpPost(cloudHost+'/api/ui/account/login',{username:cloudUser,password:cloudPwd});
+    if(resp.status>=400){
+      let e={};try{e=JSON.parse(resp.text)}catch(_){}
+      if(e.code==='password_change_required')throw new Error('该账号需先在聚酷网页修改初始密码');
+      throw new Error(e.error||('登录失败 HTTP '+resp.status));
+    }
+    r=await httpGet(cloudHost+'/api/ui/viewer');
+    j=JSON.parse(r.text);
+    if(!j.account)throw new Error('登录未生效');
+  }
+  return j;
+}
+
+function stopCloudPoll(){
+  if(cloudPollTimer){clearInterval(cloudPollTimer);cloudPollTimer=null}
+}
+function startCloudPoll(dramaId){
+  stopCloudPoll();
+  const tick=async()=>{
+    try{
+      const r=await httpGet(cloudHost+'/api/ui/tasks');
+      const j=JSON.parse(r.text);
+      const tasks=(j.data||[]).filter(t=>t.dramaId===dramaId);
+      const merge=(j.merges||{})[dramaId];
+      const total=tasks.length||0;
+      const done=tasks.filter(t=>t.status==='success').length;
+      const running=tasks.filter(t=>['running','queued','parsing'].includes(t.status)).length;
+      const failed=tasks.filter(t=>['failed','canceled'].includes(t.status)).length;
+      const merging=!!(merge&&['queued','running'].includes(merge.status));
+      let txt='';
+      if(total)txt=`NAS 下载: ${done}/${total}集完成`+(running?` · ${running}个进行中`:'')+(failed?` · ${failed}个失败`:'');
+      if(merging)txt+=` · 合并 ${merge.progress||0}%`;
+      if(merge&&merge.status==='success'){txt+=' · 合并完成 ✅';stopCloudPoll();showDownloaded();}
+      if(merge&&merge.status==='failed'){txt+=' · 合并失败';stopCloudPoll();}
+      if(!merging&&total&&!running&&!failed){stopCloudPoll();txt+=' · 下载完成';showDownloaded();}
+      document.getElementById('progressText').textContent=txt;
+      document.getElementById('progressFill').style.width=total?Math.round(done/total*100)+'%':'50%';
+    }catch(e){dbg('poll error: '+e.message)}
+  };
+  tick();
+  cloudPollTimer=setInterval(tick,3000);
+}
+
 async function startDownload(){
   if(!currentSeriesId){AndroidBridge.toast('请先解析');return}
   const eps=[...selectedEps];if(!eps.length){AndroidBridge.toast('请选择集数');return}
@@ -306,18 +370,23 @@ async function startDownload(){
 
   if(downloadTarget==='cloud'){
     try{
-      const id='cb'+(++httpCallbackId);
-      httpCallbacks[id]={resolve:()=>{},reject:()=>{}};
-      AndroidBridge.httpRequest(`${cloudHost}/api/download`,'POST',JSON.stringify({series_id:currentSeriesId,episodes:eps}),id);
-      AndroidBridge.writeFile(downloadDir+'/'+currentSeriesId+'/.meta.json',JSON.stringify({source:'cloud',title:currentTitle,cover:currentCover}));
+      await jukuInit();
+      const dramaId='hongguo:'+currentSeriesId;
+      const resp=await httpPost(cloudHost+'/api/ui/download',{ids:[dramaId],quality:0});
+      if(resp.status>=400){
+        let e={};try{e=JSON.parse(resp.text)}catch(_){}
+        throw new Error(e.error||('HTTP '+resp.status));
+      }
+      AndroidBridge.writeFile(downloadDir+'/'+currentSeriesId+'/.meta.json',JSON.stringify({source:'cloud',title:currentTitle,cover:currentCover,id:currentSeriesId}));
       AndroidBridge.toast('已提交到NAS');
-      document.getElementById('progressText').textContent='已提交到NAS处理';
-      setTimeout(()=>showDownloaded(),2000);
+      document.getElementById('progressText').textContent='已提交到NAS（'+dramaId+'），正在解析...';
+      document.getElementById('progressFill').style.width='5%';
+      startCloudPoll(dramaId);
     }catch(e){AndroidBridge.toast('云端请求失败: '+e.message)}
     return;
   }
 
-  const safeTitle=(currentTitle||currentSeriesId).replace(/[\\/:*?"<>|]/g,'_');
+  const safeTitle=(currentTitle||currentSeriesId).replace(/[\\\/:*?"<>|]/g,'_');
   const dramaDir=downloadDir+'/'+safeTitle;
   AndroidBridge.runCommand('mkdir -p '+dramaDir,'mkdir');
   AndroidBridge.writeFile(dramaDir+'/.meta.json',JSON.stringify({source:'local',title:currentTitle,cover:currentCover,id:currentSeriesId}));
@@ -332,12 +401,10 @@ async function downloadEps(eps,dramaDir){
     try{
       const ep=episodes.find(e=>e.vid_index===idx);
       let best='',bestKey='',fromWeb=false;
-      // 1) Web 页面取流（未加密直链，最稳）
       try{
         const wu=await fetchWebMedia(currentSeriesId,ep.vid);
         if(wu&&wu.startsWith('http')){best=wu;fromWeb=true}
       }catch(e){dbg('web media ep'+idx+' err: '+e.message)}
-      // 2) App 接口（带签名，可能加密）
       if(!best){
         const r=await hgApiCall('/novel/player/video_model/v1/',{video_id:ep.vid,content_type:1,biz_param:{need_all_video_definition:true,video_platform:3}});
         const j=await r.json();
@@ -393,7 +460,7 @@ function retryEp(idx){
   const eps=failedEps.length?failedEps:[idx];
   AndroidBridge.toast('重试'+eps.length+'个失败集数...');
   document.getElementById('errorList').innerHTML='';
-  const safeTitle=(currentTitle||currentSeriesId).replace(/[\\/:*?"<>|]/g,'_');
+  const safeTitle=(currentTitle||currentSeriesId).replace(/[\\\/:*?"<>|]/g,'_');
   const dramaDir=downloadDir+'/'+safeTitle;
   downloadEps(eps,dramaDir);
 }
@@ -401,46 +468,38 @@ function retryEp(idx){
 function showSettings(){document.getElementById('settingsPanel').classList.add('show')}
 function closeSettings(){document.getElementById('settingsPanel').classList.remove('show')}
 
-function onSettingsLoaded(host,port,pwd){
-  cloudHost=host||'';cloudPwd=pwd||'';
+function onSettingsLoaded(host,port,pwd,user){
+  cloudHost=host||'';cloudPwd=pwd||'';cloudUser=user||'';
   document.getElementById('setHost').value=cloudHost;
+  document.getElementById('setUser').value=cloudUser;
   document.getElementById('setPwd').value=cloudPwd;
-  if(cloudPwd&&window.AndroidBridge)AndroidBridge.setAuthToken(cloudPwd);
   showDownloaded();
 }
 
-function testConnection(){
+async function testConnection(){
   const host=document.getElementById('setHost').value.trim().replace(/\/$/,'');
+  const user=document.getElementById('setUser').value.trim();
   const pwd=document.getElementById('setPwd').value;
   if(!host){AndroidBridge.toast('请先填写地址');return}
   dbg('testConnection: '+host);
   AndroidBridge.toast('正在测试...');
-  AndroidBridge.setAuthToken(pwd);
-  const rid='cb'+(++httpCallbackId);
-  httpCallbacks[rid]={
-    resolve:(r)=>{
-      try{
-        const j=JSON.parse(r.text);
-        if(j.code===0){
-          AndroidBridge.toast('连接成功，NAS上有'+(j.data?j.data.length:0)+'部剧');
-          cloudHost=host;cloudPwd=pwd;
-          AndroidBridge.saveSettings(cloudHost,'',cloudPwd);
-          showDownloaded();
-        }
-        else if(j.code===-1){AndroidBridge.toast('连接成功但密钥错误')}
-        else{AndroidBridge.toast('响应: '+r.text.slice(0,80))}
-      }catch(e){AndroidBridge.toast('响应: '+r.text.slice(0,80))}
-    },
-    reject:(e)=>{dbg('testConnection err: '+e);AndroidBridge.toast('连接失败: '+e)}
-  };
-  AndroidBridge.httpRequest(host+'/api/files','GET','',rid);
+  cloudHost=host;cloudUser=user;cloudPwd=pwd;
+  try{
+    const j=await jukuInit();
+    AndroidBridge.toast(j.account?('连接成功，已登录 '+j.account.username):'连接成功（匿名）');
+    AndroidBridge.saveSettings(cloudHost,cloudUser,cloudPwd);
+    showDownloaded();
+  }catch(e){
+    dbg('testConnection err: '+e.message);
+    AndroidBridge.toast('连接失败: '+e.message);
+  }
 }
 
 function saveSettings(){
   cloudHost=document.getElementById('setHost').value.trim().replace(/\/$/,'');
+  cloudUser=document.getElementById('setUser').value.trim();
   cloudPwd=document.getElementById('setPwd').value;
-  AndroidBridge.saveSettings(cloudHost,'',cloudPwd);
-  if(cloudPwd)AndroidBridge.setAuthToken(cloudPwd);
+  AndroidBridge.saveSettings(cloudHost,cloudUser,cloudPwd);
   closeSettings();
 }
 
@@ -461,7 +520,6 @@ async function showDownloaded(){
   card.classList.remove('hidden');
   const list=document.getElementById('downloadedList');
   try{
-    // Local items
     const dirs=JSON.parse(AndroidBridge.listDir(downloadDir));
     const items=dirs.filter(d=>d.isDir).map(d=>{
       const files=JSON.parse(AndroidBridge.listDir(downloadDir+'/'+d.name));
@@ -472,66 +530,93 @@ async function showDownloaded(){
       return {id:d.name,count:mps.length,size:mps.reduce((s,f)=>s+f.size,0),source,title,cover};
     }).filter(x=>x.count>0);
 
-    // Cloud items
     if(cloudHost){
       try{
-        const r=await httpGet(cloudHost+'/api/files');
+        const r=await httpGet(cloudHost+'/api/ui/tasks');
         const j=JSON.parse(r.text);
-        if(j.code===0&&j.data){
-          for(const c of j.data){
-            items.push({id:c.name,count:c.count,size:(c.size_mb||0)*1048576,source:'cloud',title:c.title||c.name,cover:c.cover||'',
-              merged:c.merged,missing:c.missing||0,missing_list:c.missing_list||[],series_id:c.series_id||''});
-          }
-        }
-      }catch(e){dbg('cloud files error: '+e.message)}
+        const groups={};
+        (j.data||[]).forEach(t=>{
+          const gid=t.dramaId||t.dramaTitle||'';
+          if(!groups[gid])groups[gid]={title:t.dramaTitle||gid,tasks:[],merge:null};
+          groups[gid].tasks.push(t);
+        });
+        Object.entries(j.merges||{}).forEach(([gid,m])=>{
+          if(!groups[gid])groups[gid]={title:m.dramaTitle||gid,tasks:[],merge:m};
+          groups[gid].merge=m;
+        });
+        Object.keys(groups).forEach(gid=>{
+          const g=groups[gid];
+          const total=g.tasks.length;
+          const done=g.tasks.filter(t=>t.status==='success').length;
+          const running=g.tasks.filter(t=>['running','queued','parsing'].includes(t.status)).length;
+          const failed=g.tasks.filter(t=>['failed','canceled'].includes(t.status)).length;
+          const m=g.merge;
+          items.push({
+            id:gid,count:total,done,size:g.tasks.reduce((s,t)=>s+(t.totalBytes||0),0),
+            source:'cloud',title:(g.title||gid).replace(/^hongguo:/,''),cover:'',
+            merged:!!(m&&m.status==='success'),merging:!!(m&&['queued','running'].includes(m.status)),
+            mergeProgress:m?(m.progress||0):0,running,failed
+          });
+        });
+      }catch(e){dbg('cloud tasks error: '+e.message)}
     }
 
     if(!items.length){list.innerHTML='<div style="color:var(--dim)">暂无下载</div>';return}
-    list.innerHTML=items.map(it=>`
+    list.innerHTML=items.map(it=>{
+      const isCloud=it.source==='cloud';
+      const badge=isCloud?'☁️ NAS':'📱 本地';
+      const badgeBg=isCloud?'rgba(46,204,113,.2)':'rgba(52,152,219,.2)';
+      const badgeColor=isCloud?'#2ecc71':'#3498db';
+      let sub;
+      if(isCloud)sub=`${it.done}/${it.count}集完成${it.running?` · ${it.running}个进行中`:''}${it.failed?` · ${it.failed}个失败`:''}`;
+      else sub=`${it.count}集 · ${(it.size/1048576).toFixed(1)}MB`;
+      let actions='';
+      if(isCloud){
+        if(it.merging)actions+=`<span style="font-size:12px;color:var(--orange)">🔄 合并中 ${it.mergeProgress}%</span>`;
+        else if(it.merged)actions+=`<span style="font-size:12px;color:var(--green)">✅ 已合并</span>`;
+        else if(it.done>0)actions+=`<button class="sm" style="background:var(--green)" onclick="mergeDrama('${it.id}','cloud')">🔗 合并</button>`;
+        if(it.failed>0)actions+=`<button class="sm" style="background:var(--orange)" onclick="retryCloud('${it.id}')">↻ 重试失败</button>`;
+        actions+=`<button class="sm" style="background:#e74c3c" onclick="cancelCloud('${it.id}')">⏹ 取消任务</button>`;
+      }else{
+        actions+=`<button class="sm" style="background:#e74c3c" onclick="deleteDrama('${it.id}','local')">🗑 删除</button>`;
+      }
+      return `
       <div style="background:var(--input);padding:12px;border-radius:8px;margin-bottom:8px;display:flex;gap:10px">
         <img src="${it.cover}" style="width:50px;height:67px;border-radius:6px;object-fit:cover;flex-shrink:0" onerror="this.style.display='none'">
         <div style="flex:1">
           <div style="display:flex;align-items:center;gap:8px">
             <div style="font-size:14px;font-weight:600;flex:1">${it.title}</div>
-            <span style="font-size:11px;padding:2px 6px;border-radius:4px;background:${it.source==='cloud'?'rgba(46,204,113,.2)':'rgba(52,152,219,.2)'};color:${it.source==='cloud'?'#2ecc71':'#3498db'}">${it.source==='cloud'?'☁️ NAS':'📱 本地'}</span>
+            <span style="font-size:11px;padding:2px 6px;border-radius:4px;background:${badgeBg};color:${badgeColor}">${badge}</span>
           </div>
-          <div style="color:var(--dim);font-size:12px;margin-top:4px">${it.count}集 · ${(it.size/1048576).toFixed(1)}MB</div>
-          ${it.missing>0?`<div style="color:#e67e22;font-size:12px;margin-top:4px">缺${it.missing}集 <span style="color:var(--green);cursor:pointer" onclick="toggleMissing('${it.id}',this)">[显示]</span></div>
-          <div id="miss_${it.id}" style="display:none;color:var(--dim);font-size:11px;margin-top:2px">第${it.missing_list.join(',')}集 <span style="color:var(--green);cursor:pointer;margin-left:4px" onclick="retryMissing('${it.id}','${it.series_id}',[${it.missing_list.join(',')}])">[重试]</span></div>`:''}
-          <div style="display:flex;gap:8px;margin-top:8px">
-            ${it.source==='cloud'?(it.merged?`<span style="font-size:12px;color:var(--green);padding:4px 8px">✅ 已合并</span>`:`<button class="sm" style="background:var(--green)" onclick="mergeDrama('${it.id}','cloud')">🔗 合并</button>`):''}
-            <button class="sm" style="background:#e74c3c" onclick="deleteDrama('${it.id}','${it.source}')">🗑 删除</button>
-          </div>
+          <div style="color:var(--dim);font-size:12px;margin-top:4px">${sub}</div>
+          <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">${actions}</div>
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
   }catch(e){list.innerHTML='<div class="error-box">读取失败: '+e.message+'</div>'}
 }
 
-function toggleMissing(id,el){
-  const d=document.getElementById('miss_'+id);
-  if(d.style.display==='none'){d.style.display='block';el.textContent='[隐藏]'}else{d.style.display='none';el.textContent='[显示]'}
-}
-
-function retryMissing(id,seriesId,eps){
-  if(!seriesId){AndroidBridge.toast('缺少series_id，无法重试');return}
-  if(!confirm('重新下载缺失的集数？'))return;
-  AndroidBridge.toast('已提交到NAS');
+function retryCloud(id){
+  if(!confirm('重新尝试失败的集数？'))return;
+  AndroidBridge.toast('已提交重试');
   const rid='cb'+(++httpCallbackId);
-  httpCallbacks[rid]={resolve:()=>{},reject:()=>{}};
-  AndroidBridge.httpRequest(cloudHost+'/api/download','POST',JSON.stringify({series_id:seriesId,episodes:eps}),rid);
+  httpCallbacks[rid]={resolve:()=>{AndroidBridge.toast('重试已提交');setTimeout(showDownloaded,1500)},reject:()=>{AndroidBridge.toast('操作失败')}};
+  AndroidBridge.httpRequest(cloudHost+'/api/ui/tasks/retry','POST',JSON.stringify({dramaIds:[id]}),rid);
+}
+function cancelCloud(id){
+  if(!confirm('取消这部剧的下载任务？已完成文件保留。'))return;
+  AndroidBridge.toast('已提交取消');
+  const rid='cb'+(++httpCallbackId);
+  httpCallbacks[rid]={resolve:()=>{AndroidBridge.toast('已提交取消');setTimeout(showDownloaded,1500)},reject:()=>{AndroidBridge.toast('操作失败')}};
+  AndroidBridge.httpRequest(cloudHost+'/api/ui/tasks/cancel','POST',JSON.stringify({dramaIds:[id]}),rid);
 }
 
 function deleteDrama(id,source){
   if(!confirm('确认删除这部剧的所有文件？'))return;
-  if(source==='cloud'&&cloudHost){
-    const rid='cb'+(++httpCallbackId);
-    httpCallbacks[rid]={resolve:()=>{AndroidBridge.toast('已删除');showDownloaded()},reject:()=>{AndroidBridge.toast('删除失败');showDownloaded()}};
-    AndroidBridge.httpRequest(cloudHost+'/api/delete','POST',JSON.stringify({drama:id}),rid);
-  }else{
-    AndroidBridge.deleteDrama(downloadDir+'/'+id);
-    AndroidBridge.toast('已删除');
-    showDownloaded();
-  }
+  if(source==='cloud'){cancelCloud(id);return}
+  AndroidBridge.deleteDrama(downloadDir+'/'+id);
+  AndroidBridge.toast('已删除');
+  showDownloaded();
 }
 
 window.onMergeDone=(cid,code,msg)=>{
@@ -548,8 +633,13 @@ function mergeDrama(id,source){
   if(!confirm('确认提交到NAS合并？'))return;
   AndroidBridge.toast('正在提交NAS合并...');
   const rid='cb'+(++httpCallbackId);
-  httpCallbacks[rid]={resolve:()=>{AndroidBridge.toast('合并任务已提交');},reject:()=>{}};
-  AndroidBridge.httpRequest(`${cloudHost}/api/merge`,'POST',JSON.stringify({drama:id}),rid);
+  httpCallbacks[rid]={resolve:(r)=>{
+    let j={};try{j=JSON.parse(r.text)}catch(_){}
+    const accepted=j.accepted!==undefined?j.accepted:1;
+    AndroidBridge.toast('合并任务已提交（'+accepted+'部）');
+    startCloudPoll(id);
+  },reject:()=>{AndroidBridge.toast('提交合并失败')}};
+  AndroidBridge.httpRequest(cloudHost+'/api/ui/merge','POST',JSON.stringify({dramaIds:[id],deleteEpisodes:false,async:true}),rid);
 }
 showDownloaded();
 </script>

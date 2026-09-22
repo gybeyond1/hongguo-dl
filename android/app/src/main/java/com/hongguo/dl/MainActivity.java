@@ -1,5 +1,4 @@
 package com.hongguo.dl;
-
 import android.Manifest;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -15,7 +14,6 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
-
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.BufferedReader;
@@ -26,9 +24,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-
 public class MainActivity extends Activity {
-
     private static final String UA = "com.phoenix.read/73532 (Linux; U; Android 16; zh_CN; 25053RT47C; Build/BP2A.250605.031.A3; Cronet/TTNetVersion:04657795 2026-01-23 QuicVersion:c67e9834 2025-09-08)";
     private static final String HG_API = "https://api5-normal-sinfonlineb.fqnovel.com";
     private static final String WEB_UA = "Mozilla/5.0 (Linux; Android 16; 25053RT47C) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36";
@@ -49,15 +45,25 @@ public class MainActivity extends Activity {
     private volatile String authToken = "";
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private String pendingShareText = null;
-
+    // juku（聚酷）云模式身份与会话
+    private static final String PREFS_JUKU_VIEWER = "juku_viewer";
+    private static final String PREFS_JUKU_SOURCES = "juku_sources";
+    private static final String PREFS_JUKU_ONLINE = "juku_online";
+    private static final String PREFS_COOKIE = "juku_cookie";
+    private volatile String jukuViewer = "";
+    private volatile String jukuSources = "";
+    private volatile String jukuOnline = "false";
+    private volatile String jukuCookie = "";
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-
         prefs = getSharedPreferences("settings", MODE_PRIVATE);
+        jukuViewer = prefs.getString(PREFS_JUKU_VIEWER, "");
+        jukuSources = prefs.getString(PREFS_JUKU_SOURCES, "");
+        jukuOnline = prefs.getString(PREFS_JUKU_ONLINE, "false");
+        jukuCookie = prefs.getString(PREFS_COOKIE, "");
         webView = findViewById(R.id.webview);
-
         WebSettings s = webView.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
@@ -67,7 +73,6 @@ public class MainActivity extends Activity {
         s.setAllowFileAccessFromFileURLs(true);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         s.setMediaPlaybackRequiresUserGesture(false);
-
         webView.addJavascriptInterface(new JsBridge(), "AndroidBridge");
         webView.setWebChromeClient(new android.webkit.WebChromeClient());
         webView.setWebViewClient(new WebViewClient() {
@@ -84,35 +89,31 @@ public class MainActivity extends Activity {
                 }
             }
         });
-
         checkStoragePermission();
         handleIntent(getIntent());
         webView.loadUrl("file:///android_asset/index.html");
     }
-
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         handleIntent(intent);
     }
-
     private void handleIntent(Intent intent) {
         if (Intent.ACTION_SEND.equals(intent.getAction()) && "text/plain".equals(intent.getType())) {
             String text = intent.getStringExtra(Intent.EXTRA_TEXT);
             if (text != null) pendingShareText = text;
         }
     }
-
     private void pushSettings() {
         String host = prefs.getString("cloud_host", "");
         String port = prefs.getString("cloud_port", "8800");
         String pwd = prefs.getString("cloud_password", "");
+        String user = prefs.getString("cloud_user", "");
         webView.evaluateJavascript(
             "window.onSettingsLoaded && onSettingsLoaded(" +
-                "'" + host + "','" + port + "','" + pwd + "'" +
+                "'" + host + "','" + port + "','" + pwd + "','" + user + "'" +
             ")", null);
     }
-
     private void checkStoragePermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             if (!Environment.isExternalStorageManager()) {
@@ -129,25 +130,21 @@ public class MainActivity extends Activity {
             }
         }
     }
-
     public class JsBridge {
-
         @JavascriptInterface
         public void dbg(String msg) {
             runOnUiThread(() -> webView.evaluateJavascript(
                 "dbg && dbg('[java] '+" + "\"" + msg.replace("\"", "\\\"") + "\")", null));
         }
-
         @JavascriptInterface
-        public void saveSettings(String host, String port, String password) {
+        public void saveSettings(String host, String username, String password) {
             prefs.edit()
                 .putString("cloud_host", host)
-                .putString("cloud_port", port)
+                .putString("cloud_user", username)
                 .putString("cloud_password", password)
                 .apply();
             runOnUiThread(() -> Toast.makeText(MainActivity.this, "设置已保存", Toast.LENGTH_SHORT).show());
         }
-
         @JavascriptInterface
         public String getDownloadDir() {
             File dir = new File(android.os.Environment.getExternalStoragePublicDirectory(
@@ -155,7 +152,6 @@ public class MainActivity extends Activity {
             dir.mkdirs();
             return dir.getAbsolutePath();
         }
-
         @JavascriptInterface
         public void deleteDrama(String path) {
             try {
@@ -169,7 +165,6 @@ public class MainActivity extends Activity {
                 }
             } catch (Exception e) {}
         }
-
         @JavascriptInterface
         public void downloadFile(String url, String pathAndCid) {
             executor.execute(() -> {
@@ -206,7 +201,6 @@ public class MainActivity extends Activity {
                 }
             });
         }
-
         @JavascriptInterface
         public void downloadDecryptFile(String url, String spadeA, String pathAndCid) {
             executor.execute(() -> {
@@ -220,7 +214,6 @@ public class MainActivity extends Activity {
                 try {
                     File outFile = new File(path);
                     outFile.getParentFile().mkdirs();
-                    // Download to temp
                     File tmpFile = new File(getCacheDir(), "enc_" + System.currentTimeMillis() + ".mp4");
                     HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
                     conn.setRequestProperty("User-Agent", UA);
@@ -236,7 +229,6 @@ public class MainActivity extends Activity {
                     int n;
                     while ((n = is.read(buf)) != -1) fos.write(buf, 0, n);
                     fos.close(); is.close(); conn.disconnect();
-                    // Decrypt
                     byte[] key = HongguoDecrypt.deriveKey(spadeA);
                     if (key == null) throw new Exception("无法解密：密钥派生失败");
                     HongguoDecrypt.decryptMp4File(tmpFile.getAbsolutePath(), path, key);
@@ -252,7 +244,6 @@ public class MainActivity extends Activity {
                 }
             });
         }
-
         @JavascriptInterface
         public void runCommand(String cmd, String callbackId) {
             executor.execute(() -> {
@@ -278,23 +269,19 @@ public class MainActivity extends Activity {
                 }
             });
         }
-
         @JavascriptInterface
         public String fileExists(String path) {
             return new File(path).exists() ? "yes" : "no";
         }
-
         @JavascriptInterface
         public long fileSize(String path) {
             File f = new File(path);
             return f.exists() ? f.length() : 0;
         }
-
         @JavascriptInterface
         public void deleteFile(String path) {
             new File(path).delete();
         }
-
         @JavascriptInterface
         public String readFile(String path) {
             try {
@@ -306,7 +293,6 @@ public class MainActivity extends Activity {
             return new String(data, "UTF-8");
         } catch (Exception e) { return ""; }
         }
-
         @JavascriptInterface
         public void writeFile(String path, String content) {
             try {
@@ -317,12 +303,10 @@ public class MainActivity extends Activity {
                 fos.close();
             } catch (Exception e) {}
         }
-
         @JavascriptInterface
         public void setAuthToken(String token) {
             authToken = token;
         }
-
         @JavascriptInterface
         public String runCommandSync(String cmd) {
             try {
@@ -335,12 +319,10 @@ public class MainActivity extends Activity {
                 return sb.toString();
             } catch (Exception e) { return ""; }
         }
-
         @JavascriptInterface
         public void toast(String msg) {
             runOnUiThread(() -> Toast.makeText(MainActivity.this, msg, Toast.LENGTH_SHORT).show());
         }
-
         @JavascriptInterface
         public String listDir(String path) {
             try {
@@ -360,7 +342,6 @@ public class MainActivity extends Activity {
                 return sb.toString();
             } catch (Exception e) { return "[]"; }
         }
-
         @JavascriptInterface
         public String getFfmpegPath() {
             try {
@@ -370,7 +351,6 @@ public class MainActivity extends Activity {
                 return ffmpeg.exists() ? ffmpeg.getAbsolutePath() : "";
             } catch (Exception e) { return ""; }
         }
-
         private void copyFile(File src, File dst) throws Exception {
             FileInputStream fis = new FileInputStream(src);
             FileOutputStream fos = new FileOutputStream(dst);
@@ -379,20 +359,18 @@ public class MainActivity extends Activity {
             while ((n = fis.read(buf)) != -1) fos.write(buf, 0, n);
             fos.close(); fis.close();
         }
-
         private String getSoname(File soFile) {
-            // Read ELF to find DT_SONAME
             try {
                 java.io.RandomAccessFile raf = new java.io.RandomAccessFile(soFile, "r");
-                raf.seek(28); // e_phoff for 64-bit
+                raf.seek(28);
                 long phoff = raf.readLong();
-                raf.seek(54); // e_phentsize
+                raf.seek(54);
                 int phentsize = raf.readShort();
                 int phnum = raf.readShort();
                 for (int i = 0; i < phnum; i++) {
                     raf.seek(phoff + i * phentsize);
                     int p_type = raf.readInt();
-                    if (p_type == 2) { // PT_DYNAMIC
+                    if (p_type == 2) {
                         raf.seek(phoff + i * phentsize + 16);
                         long dynoff = raf.readLong();
                         raf.seek(phoff + i * phentsize + 32);
@@ -409,7 +387,7 @@ public class MainActivity extends Activity {
                             if (tag == 0) break;
                         }
                         for (long[] e : entries) {
-                            if (e[0] == 14) { // DT_SONAME
+                            if (e[0] == 14) {
                                 raf.seek(strtab + e[1]);
                                 StringBuilder sb = new StringBuilder();
                                 int b;
@@ -424,7 +402,6 @@ public class MainActivity extends Activity {
             } catch (Exception ignored) {}
             return null;
         }
-
         @JavascriptInterface
         public void downloadFfmpeg(String callbackId) {
             String path = getFfmpegPath();
@@ -436,7 +413,6 @@ public class MainActivity extends Activity {
                     "window.onFfmpegError && onFfmpegError('ffmpeg未找到')", null));
             }
         }
-
         @JavascriptInterface
         public void hgApiCall(String path, String bodyJson, String callbackId) {
             executor.execute(() -> {
@@ -448,8 +424,6 @@ public class MainActivity extends Activity {
                         hgDeviceId = String.valueOf(d);
                         hgInstallId = String.valueOf(i);
                     }
-                    // Build query in fixed order (insertion order matters for signature)
-                    // HG_QUERY_VALS 只含18个静态参数；device_id/iid 动态生成，单独追加
                     java.util.LinkedHashMap<String, String> q = new java.util.LinkedHashMap<>();
                     for (int i = 0; i < HG_QUERY_VALS.length; i++) q.put(HG_QUERY_KEYS[i], HG_QUERY_VALS[i]);
                     q.put("device_id", hgDeviceId);
@@ -464,7 +438,6 @@ public class MainActivity extends Activity {
                         qs.append(urlEncode(e.getKey())).append("=").append(urlEncode(e.getValue()));
                     }
                     byte[] bodyBytes = (bodyJson == null || bodyJson.isEmpty()) ? new byte[0] : bodyJson.getBytes("UTF-8");
-                    // Sign
                     long tsSec = nowMs / 1000;
                     byte[] qHash = md5(qs.toString().getBytes("UTF-8"));
                     byte[] payload = new byte[20];
@@ -485,7 +458,6 @@ public class MainActivity extends Activity {
                         payload[i] = (byte) (reverse8(mixed) ^ 0xff ^ 20);
                     }
                     byte[] signature = new byte[]{(byte)0x84,(byte)0x04,(byte)0x40,(byte)0x1c,0,0,(byte)payload[0],(byte)payload[1],(byte)payload[2],(byte)payload[3],(byte)payload[4],(byte)payload[5],(byte)payload[6],(byte)payload[7],(byte)payload[8],(byte)payload[9],(byte)payload[10],(byte)payload[11],(byte)payload[12],(byte)payload[13],(byte)payload[14],(byte)payload[15],(byte)payload[16],(byte)payload[17],(byte)payload[18],(byte)payload[19]};
-                    // Request
                     URL u = new URL(HG_API + path + "?" + qs.toString());
                     HttpURLConnection conn = (HttpURLConnection) u.openConnection();
                     conn.setRequestMethod("POST");
@@ -523,7 +495,6 @@ public class MainActivity extends Activity {
                 }
             });
         }
-
         @JavascriptInterface
         public void fetchWebMedia(String seriesId, String vid, String callbackId) {
             executor.execute(() -> {
@@ -561,37 +532,31 @@ public class MainActivity extends Activity {
                 }
             });
         }
-
         private static byte[] md5(byte[] data) {
             try {
                 java.security.MessageDigest md = java.security.MessageDigest.getInstance("MD5");
                 return md.digest(data);
             } catch (Exception e) { return new byte[16]; }
         }
-
         private static String toHexUpper(byte[] data) {
             StringBuilder sb = new StringBuilder();
             for (byte b : data) sb.append(String.format("%02X", b));
             return sb.toString();
         }
-
         private static String toHexLower(byte[] data) {
             StringBuilder sb = new StringBuilder();
             for (byte b : data) sb.append(String.format("%02x", b));
             return sb.toString();
         }
-
         private static void writeBE32(byte[] arr, int off, int val) {
             arr[off] = (byte)((val >> 24) & 0xff);
             arr[off+1] = (byte)((val >> 16) & 0xff);
             arr[off+2] = (byte)((val >> 8) & 0xff);
             arr[off+3] = (byte)(val & 0xff);
         }
-
         private static int rotl8(int b, int n) {
             return ((b << n) | (b >> (8 - n))) & 0xff;
         }
-
         private static int reverse8(int b) {
             int r = 0;
             for (int i = 0; i < 8; i++) {
@@ -600,20 +565,34 @@ public class MainActivity extends Activity {
             }
             return r & 0xff;
         }
-
         private static String urlEncode(String s) {
             try {
-                // 与 Python urllib.parse.urlencode(quote_plus, safe='') 完全一致：
-                // 空格→+，*→%2A，~→%7E（Java URLEncoder 保留 * 和 ~，需手动替换）
                 return java.net.URLEncoder.encode(s, "UTF-8").replace("*", "%2A").replace("~", "%7E");
             } catch (Exception e) { return s; }
         }
-
+        @JavascriptInterface
+        public void setJukuIdentity(String viewerId, String sources, String onlineOnly) {
+            jukuViewer = viewerId == null ? "" : viewerId;
+            jukuSources = sources == null ? "" : sources;
+            jukuOnline = onlineOnly == null ? "false" : onlineOnly;
+            prefs.edit()
+                .putString(PREFS_JUKU_VIEWER, jukuViewer)
+                .putString(PREFS_JUKU_SOURCES, jukuSources)
+                .putString(PREFS_JUKU_ONLINE, jukuOnline)
+                .apply();
+        }
+        @JavascriptInterface
+        public void clearJukuCookie() {
+            jukuCookie = "";
+            prefs.edit().remove(PREFS_COOKIE).apply();
+        }
         @JavascriptInterface
         public void httpRequest(String url, String method, String body, String callbackId) {
             executor.execute(() -> {
                 try {
                     URL u = new URL(url);
+                    String cfgHost = prefs.getString("cloud_host", "");
+                    boolean isJuku = cfgHost != null && cfgHost.length() > 4 && url.startsWith(cfgHost);
                     HttpURLConnection conn;
                     if (u.getProtocol().equals("https")) {
                         javax.net.ssl.HttpsURLConnection https = (javax.net.ssl.HttpsURLConnection) u.openConnection();
@@ -634,13 +613,20 @@ public class MainActivity extends Activity {
                     }
                     conn.setRequestMethod(method);
                     conn.setRequestProperty("User-Agent", UA);
-                    conn.setRequestProperty("Referer", "https://novelquickapp.com/");
+                    if (!isJuku) conn.setRequestProperty("Referer", "https://novelquickapp.com/");
                     if (!"GET".equals(method)) {
                         conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
                     }
                     conn.setRequestProperty("Accept", "application/json; charset=utf-8,application/x-protobuf");
                     conn.setRequestProperty("Accept-Encoding", "identity");
-                    if (!authToken.isEmpty() && !url.contains("fqnovel.com")) {
+                    if (isJuku) {
+                        if (!jukuCookie.isEmpty()) conn.setRequestProperty("Cookie", jukuCookie);
+                        if (!jukuViewer.isEmpty()) {
+                            conn.setRequestProperty("X-Juku-Viewer", jukuViewer);
+                            conn.setRequestProperty("X-Juku-Sources", jukuSources);
+                            conn.setRequestProperty("X-Juku-Online-Only", jukuOnline);
+                        }
+                    } else if (!authToken.isEmpty() && !url.contains("fqnovel.com")) {
                         conn.setRequestProperty("X-Auth-Token", authToken);
                     }
                     conn.setConnectTimeout(15000);
@@ -656,6 +642,26 @@ public class MainActivity extends Activity {
                     dbg("HTTP " + method + " " + url + " body=" + (body != null ? body.substring(0, Math.min(body.length(), 100)) : ""));
                     int code = conn.getResponseCode();
                     dbg("HTTP response code=" + code);
+                    if (isJuku) {
+                        java.util.Map<String, java.util.List<String>> respHeaders = conn.getHeaderFields();
+                        if (respHeaders != null) {
+                            java.util.List<String> setCookies = respHeaders.get("Set-Cookie");
+                            if (setCookies != null && !setCookies.isEmpty()) {
+                                StringBuilder cookieSb = new StringBuilder();
+                                for (String c : setCookies) {
+                                    String nameVal = c.split(";")[0].trim();
+                                    if (!nameVal.isEmpty()) {
+                                        if (cookieSb.length() > 0) cookieSb.append("; ");
+                                        cookieSb.append(nameVal);
+                                    }
+                                }
+                                if (cookieSb.length() > 0) {
+                                    jukuCookie = cookieSb.toString();
+                                    prefs.edit().putString(PREFS_COOKIE, jukuCookie).apply();
+                                }
+                            }
+                        }
+                    }
                     String finalUrl = conn.getURL().toString();
                     InputStream is = (code >= 200 && code < 400) ? conn.getInputStream() : conn.getErrorStream();
                     String encoding = conn.getContentEncoding();
